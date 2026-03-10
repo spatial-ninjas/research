@@ -1,0 +1,57 @@
+name: Build report
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Pandoc
+        uses: pandoc/actions/setup@v1
+
+      - name: Install XeLaTeX dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            texlive-xetex \
+            texlive-latex-extra \
+            texlive-fonts-recommended \
+            texlive-bibtex-extra \
+            latexmk
+
+      - name: Verify tool versions
+        run: |
+          pandoc --version
+          xelatex --version
+
+      - name: Build report artifacts
+        run: make all
+
+      - name: Upload PDF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spatial-ninjas-report-pdf
+          path: build/spatial-ninjas-report.pdf
+          if-no-files-found: error
+
+      - name: Upload HTML artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spatial-ninjas-report-html
+          path: build/spatial-ninjas-report.html
+          if-no-files-found: error
+
+      - name: Upload merged markdown artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spatial-ninjas-report-merged-markdown
+          path: build/merged.md
+          if-no-files-found: error
