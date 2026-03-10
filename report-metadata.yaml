@@ -1,0 +1,29 @@
+title: "LLM Spatial Reasoning: Evaluating and Enhancing Geographic Cognition in Language Models"
+subtitle: "Spatial Ninjas — Course Project Report"
+
+author:
+  - Ki Chun Tong
+  - Pawel Dzierzynski
+  - Oliver Isaksson
+  - Eemil Koskinen
+  - Topi Nieminen
+  - Totti L.
+
+date: $date$
+lang: en
+
+keywords:
+  - spatial reasoning
+  - large language models
+  - geospatial cognition
+  - GeoAI
+
+abstract: |
+  This report evaluates the spatial reasoning capabilities of large language
+  models and explores methods to improve geographic cognition in LLM-based
+  systems.
+
+link-citations: true
+toc: true
+toc-depth: 2
+number-sections: true
