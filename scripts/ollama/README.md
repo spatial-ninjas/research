@@ -19,11 +19,11 @@ call_ollama(model_name, prompt, max_tokens=50, temperature=0)
 It sends a prompt to a locally running Ollama model and returns the generated text.
 
 
-# Prerequisites
+## Prerequisites
 
 Before running the script, Ollama must be installed and a model must be available locally.
 
-## 1. Install Ollama
+### 1. Install Ollama
 
 Follow the instructions at:
 
@@ -50,7 +50,7 @@ ollama version is 0.17.7
 ```
 
 
-## 2. Pull the model
+### 2. Pull the model
 
 Download the model used by the script:
 
@@ -72,7 +72,7 @@ llama3.2:3b    a80c4f17acd5    2.0 GB
 ```
 
 
-## 3. Ensure the Ollama server is running
+### 3. Ensure the Ollama server is running
 
 Ollama exposes an HTTP API on port **11434**.
 
@@ -105,7 +105,7 @@ Is Oslo north of the Arctic Circle?
 ```
 
 
-# Python dependency
+## Python dependency
 
 The script uses the OpenAI Python client to communicate with the Ollama API.
 
@@ -116,7 +116,7 @@ pip install openai
 ```
 
 
-# How the script works
+## How the script works
 
 Ollama exposes an **OpenAI-compatible API** locally at:
 
@@ -138,7 +138,7 @@ client = OpenAI(
 The API key is required by the client library but ignored by Ollama.
 
 
-# Running the script
+## Running the script
 
 From the repository root:
 
@@ -153,7 +153,7 @@ No, Oslo is south of the Arctic Circle.
 ```
 
 
-# Using the function in other scripts
+## Using the function in other scripts
 
 The helper function can also be imported into other Python modules.
 
@@ -170,8 +170,18 @@ response = call_ollama(
 print(response)
 ```
 
+## Attribution
 
-# Notes
+The helper script `call_ollama.py` is a simplified adaptation inspired by the
+code used in:
+
+Manvi et al. (2024), *GeoLLM*.
+
+The implementation here has been modified to provide a minimal example for
+calling local models through the Ollama OpenAI-compatible API.
+
+
+## Notes
 
 * The model runs **locally** on your machine.
 * Model responses are **not guaranteed to be factually correct**.
