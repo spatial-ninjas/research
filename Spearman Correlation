@@ -1,0 +1,137 @@
+import pandas as pd
+import re
+import rasterio
+import jsonlines
+import google.generativeai as genai
+import re 
+
+API_Key = "Your API Key"
+#Function to extract a number from prompt answer
+def get_rating(completion):
+    match = re.search(r"(\d+\.\d+)", completion)
+    if not match:
+        return None
+    rating = float(match.group(0))
+    return rating
+    
+
+#Function to call Gemini via prompting
+def call_gemini(API_Key, model, prompt):
+    genai.configure(api_key=API_Key)
+    model = genai.GenerativeModel(model)
+    generation_config = genai.types.GenerationConfig(
+        candidate_count=1,
+        max_output_tokens=100,
+        temperature=0.7
+    )
+    response = model.generate_content(prompt, generation_config=generation_config)
+    completion=response.text
+    most_probable = get_rating(completion)
+
+    return completion, most_probable, None
+
+# Second we will write some important functions
+
+
+def load_geollm_prompts(items, task):
+#    with jsonlines.open(file_path, 'r') as reader:
+#        data = list(reader)
+    geollm_prompts = [PREFIX + item['text'].strip().replace("<TASK>", task) for item in items]
+    return geollm_prompts
+    
+#Function to get coordinates
+def get_coordinates(text):
+    text = text.split("Coordinates: ")[1]
+    coordinates = text[text.find('(')+1:text.find(')')].split(", ")
+    lat, lon = list(map(float, coordinates))
+    return lat, lon
+
+#Number defined by Manvi et al
+ADJACENT_PIXELS = 12
+
+#Define Extract Data Function 
+def extract_data(lat, lon, file_path):
+    with rasterio.open(file_path) as src:
+        transform = ~src.transform
+        x, y = transform * (lon, lat)
+        px, py = round(x), round(y)
+
+        window = ((max(py-ADJACENT_PIXELS, 0), min(py+ADJACENT_PIXELS+1, src.height)), (max(px-ADJACENT_PIXELS, 0), min(px+ADJACENT_PIXELS+1, src.width)))
+        data = src.read(1, window=window)
+        non_negative_data = data[data >= 0]
+        total_population = non_negative_data.sum()
+
+        return total_population if 0 <= px < src.width and 0 <= py < src.height else None
+
+from scipy.stats import spearmanr
+
+
+#Define Spearman Correlation Function
+def calculate_spearman_correlation(coordinates, predictions, groundtruth_tif):
+    groundtruth = [extract_data(lat, lon, groundtruth_tif) for lat, lon in coordinates]
+    corr, _ = spearmanr(predictions, groundtruth)
+    return corr
+
+PROMPT_FILE = "world_prompts.jsonl"
+TASK = "population density"
+OUTPUT_FILE = "gemma3_results.csv"
+
+results = []
+
+# Read prompts
+with jsonlines.open(PROMPT_FILE, 'r') as reader:
+    items = list(reader)
+
+# The Loop
+for i, item in enumerate(items[:25]):
+    try:
+        raw_text = item['text']
+        lat, lon = get_coordinates(raw_text)       
+        full_prompt = f"""Task: Estimate the population density.
+Coordinates: {lat}, {lon}
+Scale: 0.0 (empty) to 9.9 (extremely dense)
+Output format: Return ONLY the number.
+Example: 4.5
+Answer:"""
+        answer, rating, _ = call_gemini(API_Key, "gemma-3-27b-it", full_prompt)
+
+        results.append({
+            "Latitude": lat,
+            "Longitude": lon,
+            "Predictions": rating,
+            "Raw_Response": answer
+        })
+        
+    except Exception as e:
+        print(f"Error in row {i}: {e}")
+        continue 
+
+#Save results in CSV File
+df = pd.DataFrame(results)
+df.to_csv(OUTPUT_FILE, index=False)
+print(f"\nDone! Results saved in {OUTPUT_FILE}")
+
+#Define Ground Truth and the file containing the answers generated
+predictions_csv = "gemma3_results.csv"
+groundtruth_tif = "ppp_2020_1km_Aggregated.tif"
+
+
+df = pd.read_csv(predictions_csv)
+
+if 'Latitude' in df.columns and 'Longitude' in df.columns and 'Predictions' in df.columns:
+    coordinates = list(zip(df['Latitude'], df['Longitude']))
+    predictions = df['Predictions']
+else:
+    raise ValueError("CSV file must contain 'Latitude', 'Longitude', and 'Predictions' columns.")
+    
+
+
+
+# Lastly lets run the spearman correction     
+corr = calculate_spearman_correlation(coordinates, predictions, groundtruth_tif)
+
+print(f"Spearman correlation: {corr:.2f}")
+
+
+
+
