@@ -32,6 +32,14 @@ jobs:
           pandoc --version
           xelatex --version
 
+      - name: Inspect TeX packages
+        if: ${{ always() }}
+        run: |
+          kpsewhich hyperref.sty || true
+          kpsewhich hyperxmp.sty || true
+          kpsewhich bookmark.sty || true
+          xelatex --version || true
+
       - name: Build report artifacts
         id: build_report
         continue-on-error: true
