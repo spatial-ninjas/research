@@ -33,25 +33,60 @@ jobs:
           xelatex --version
 
       - name: Build report artifacts
+        id: build_report
+        continue-on-error: true
         run: make all
 
+      - name: Build PDF debug tex
+        if: ${{ always() }}
+        run: |
+          mkdir -p build
+          pandoc build/merged.md \
+            --from=markdown --standalone --citeproc \
+            --metadata-file=report-metadata.yaml \
+            --bibliography=references.bib \
+            --metadata=date:"March 20, 2026" \
+            --csl=template/ieee.csl \
+            --resource-path=.:docs:template:build \
+            --toc --number-sections \
+            --include-in-header=template/header.tex \
+            -t latex \
+            -o build/debug.tex
+
+      - name: Upload debug tex
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-tex
+          path: build/debug.tex
+          if-no-files-found: warn
+
       - name: Upload PDF artifact
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: spatial-ninjas-report-pdf
           path: build/spatial-ninjas-report.pdf
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload HTML artifact
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: spatial-ninjas-report-html
           path: build/spatial-ninjas-report.html
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload merged markdown artifact
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: spatial-ninjas-report-merged-markdown
           path: build/merged.md
-          if-no-files-found: error
+          if-no-files-found: warn
+
+      - name: Fail job if build failed
+        if: ${{ steps.build_report.outcome == 'failure' }}
+        run: |
+          echo "make all failed"
+          exit 1
