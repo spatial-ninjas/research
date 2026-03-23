@@ -63,7 +63,7 @@ def extract_data(lat, lon, file_path):
 
         return total_population if 0 <= px < src.width and 0 <= py < src.height else None
 
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, pearsonr
 
 
 #Define Spearman Correlation Function
@@ -71,6 +71,13 @@ def calculate_spearman_correlation(coordinates, predictions, groundtruth_tif):
     groundtruth = [extract_data(lat, lon, groundtruth_tif) for lat, lon in coordinates]
     corr, _ = spearmanr(predictions, groundtruth)
     return corr
+
+#Define function to calculate Pearson Correlation via pearsonr module and extract data function
+def calculate_pearson_correlation(coordinates, predictions, groundtruth_tif):
+    groundtruth = [extract_data(lat, lon, groundtruth_tif) for lat, lon in coordinates]
+    corr1, _ = pearsonr(predictions, groundtruth)
+    return corr1
+
 
 PROMPT_FILE = "world_prompts.jsonl"
 TASK = "population density"
@@ -127,10 +134,19 @@ else:
 
 
 
-# Lastly lets run the spearman correction     
+#Run the spearman correction     
 corr = calculate_spearman_correlation(coordinates, predictions, groundtruth_tif)
 
 print(f"Spearman correlation: {corr:.2f}")
+
+
+#Run Pearson correlation function and print results
+corr1 = calculate_pearson_correlation(coordinates, predictions, groundtruth_tif)
+print(f"Pearson correlation: {corr1:.2f}")
+
+#Calculate r^2 value which is used in the article by Manvi et al and print results
+r2 = corr1**2 
+print(f"r^2 value: {r2:.2f}")
 
 
 
