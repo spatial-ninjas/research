@@ -162,5 +162,42 @@ print(f"Pearson r (Latitude):  {corr_y:.4f}")
 print(f"R² Score (Longitude):  {r2_x:.4f}")
 print(f"R² Score (Longitude):  {r2_y:.4f}")
 
+#Calculate Accuracy Score
+import numpy as np
+tolerance = 0.001 #Standard for GPS 0.0001 which means approx 11m accuracy
+
+#Check all coordinates at once
+matches = [np.allclose(algo_p, llm_p, atol=tolerance) 
+           for algo_p, llm_p in zip(algo_points[:min_len], llm_points[:min_len])]
+
+#Calculate Accuracy score
+accuracy = sum(matches) / len(matches)
+
+print(f"Correct Score: {accuracy * 100:.1f}%")
+print(f"Number of correct swings: {sum(matches)} out of {len(matches)}")
+
+#Save as meaningful JSON
+
+import json
+from datetime import datetime
+
+# collect all data into a dictionary
+evaluation_data = {
+    "timestamp": datetime.now().isoformat(),
+    "route_name": f"{start_name} to {end_name}",
+    "llm_output": route_list,
+    "metrics": {
+        "r2_longitude": r2_x,
+        "r2_latitude": r2_y,
+        "success_rate": accuracy  
+    }
+}
+
+#Save as JSON-file
+filename = f"eval_{start_name}_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+with open(filename, "w", encoding="utf-8") as f:
+    json.dump(evaluation_data, f, indent=4)
+
+print(f"Result saved in {filename}")
 
 
