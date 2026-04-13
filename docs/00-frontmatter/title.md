@@ -5,7 +5,7 @@ This document collects the Spatial Ninjas literature summaries, synthesis notes,
 
 Project OVERVIEW (updated 13/04 2026)
 
-LLM´s chosen for this project: GPT, Gemini.  
+LLM models chosen for this project: GPT and Gemini.  
 Gemma3 is being used for testing purposes in the Test_LLM_for_routing.py as example, although the code can be used for any LLM. 
 Routingpy Module is being used as Ground Truth while a certain area of Helsinki from Open Street Map (OSM) is chosen as the reference map. 
 
