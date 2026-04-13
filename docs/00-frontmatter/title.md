@@ -16,7 +16,7 @@ Project OVERVIEW (updated 13/04 2026)
 
    The Engine (Test_LLM_for_routing.py):
    -This is the algorithm that feeds the SSAL data and a routing prompt to the LLM (Gemma 3).
-   It asks the LLM to act as a GPS and output a route in JSON format.
+   -It asks the LLM to act as a GPS and output a route in JSON format.
 
    The Interface (app.py):
    -A GUI that allows us to compare OpenAI and Gemini models side-by-side.
@@ -25,5 +25,8 @@ Project OVERVIEW (updated 13/04 2026)
 2. Technical Specs & Data Logic
 To keep the models efficient, we have pruned the OSM attributes:
 
-FeatureLogicSSAL FormatNode: Neighbor {Length, Name, Direction}. Minimalist for token efficiency.Edge FilteringWe keep u, v, name, length, and oneway. We discard speed limits, lane counts, and road types.Node FilteringWe keep osmid and x/y coordinates so the LLM understands "North/South" and relative positions.
+-FeatureLogicSSAL FormatNode: Neighbor {Length, Name, Direction}. Minimalist for token efficiency.
+-Edge FilteringWe keep u, v, name, length, and oneway. 
+-We discard speed limits, lane counts, and road types.
+-Node FilteringWe keep osmid and x/y coordinates so the LLM understands "North/South" and relative positions.
   
