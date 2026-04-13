@@ -18,7 +18,7 @@ Our team had developed three scripts that connect raw map data with AI-driven na
    SSAL only keeps essentials: Node IDs, street names, lengths, and one-way status.
 
    The Engine (Test_LLM_for_routing.py):
-   This is the algorithm that feeds the SSAL data and a routing prompt to the LLM (Gemma 3).
+   This is the algorithm that feeds the SSAL data and a routing prompt to the LLM.
    It asks the LLM to act as a GPS and output a route in JSON format.
 
    The Interface (app.py):
