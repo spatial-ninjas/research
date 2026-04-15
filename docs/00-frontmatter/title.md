@@ -49,6 +49,39 @@ Gemini 2.5 Flash:  Failed to deliver correct format in response.
 
 GPT 5.4 Mini:  Node Sequence Accuracy: 66.7%,  Distance Precision: 99.1%
 
+2 Test
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 311112501 (Korkeavuorenkatu).
+
+Results:  
+
+Gemini 2.5 Flash:  Failed to deliver correct format in response. 
+
+GPT 5.4:  Node Sequence Accuracy: 8.1%,  Distance Precision: 2.9%
+
+
+3 Test
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu).
+
+Results:  
+
+Gemini 2.5 Flash:  Failed to deliver correct format in response. 
+
+GPT 5.4:  Node Sequence Accuracy: 25.0%,  Distance Precision: 24.1%
+
+Comment: It appears that when the tests become more difficult the accuracy significantly diminishes even for GPT 5.4. 
+Gemini 2.5 Flash fails everytime to deliver a correct response format and keeps getting stuch with a response looking like this and stops short before delivering the full answer.  
+
+response_text"```json { "origin": "25291564", "  
+
+
+
+
+
+
+
+
+
+
 
 
 
