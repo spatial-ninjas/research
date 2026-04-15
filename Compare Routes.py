@@ -8,7 +8,7 @@ Input Data:
 I have attached a file named network_output.ssal. This file contains the network topology where each line represents a node and its outgoing connections in the format: Node_ID: Neighbor_ID {Length, Name, Direction}.
 
 Task:
-Find the optimal route from Origin Node ID: [INSERT START ID] to Destination Node ID: [INSERT SLUT ID].
+Find the optimal route from Origin Node ID: [INSERT START ID] to Destination Node ID: [INSERT END ID].
 
 Constraints:
 
@@ -94,7 +94,7 @@ if node_lookup:
 
         try:
             res = json.loads(json_str)
-            path = res.get('path')
+            path = res.get('path') or res.get('route')
             origin = str(res.get('origin', '')).strip()
             destination = str(res.get('destination', '')).strip()
 
