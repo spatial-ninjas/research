@@ -1,5 +1,47 @@
 LLM Route Test Results (updated 15/04 2025).
 
+The following prompt was used along the SSAL file to ask the LLM:
+
+"""
+
+System Role: > You are a precise navigation engine. Your task is to calculate the shortest path between two nodes using the provided SSAL (Simplified Semantic Adjacency List) network data.
+
+Input Data:
+I have attached a file named network_output.ssal. This file contains the network topology where each line represents a node and its outgoing connections in the format: Node_ID: Neighbor_ID {Length, Name, Direction}.
+
+Task:
+Find the optimal route from Origin Node ID: [INDSÆT START ID] to Destination Node ID: [INDSÆT SLUT ID].
+
+Constraints:
+
+Only use connections explicitly listed in the SSAL data.
+
+Respect "1w" (one-way) and "2w" (two-way) markers.
+
+Minimize the total "Length".
+
+Output the result strictly as a JSON object.
+
+Output Format:
+
+JSON
+{
+  "origin": "[ID]",
+  "destination": "[ID]",
+  "total_length": [FLOAT],
+  "route": [
+    {"node": "[ID]", "edge_name": "start"},
+    {"node": "[ID]", "edge_name": "[STREET NAME]"},
+    ...
+  ],
+  "status": "success"
+}
+Do not include any conversational text, only the JSON.
+
+"""
+
+The Results were as follows: 
+
 Test 1
 Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi).
 
