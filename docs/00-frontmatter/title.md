@@ -32,4 +32,25 @@ FeatureLogicSSAL FormatNode: Neighbor {Length, Name, Direction}. Minimalist for 
 Edge FilteringWe keep u, v, name, length, and oneway. 
 We discard speed limits, lane counts, and road types.
 Node FilteringWe keep osmid and x/y coordinates so the LLM understands "North/South" and relative positions.
+
+
+Update 15/04 2026
+
+Compare Routes.py was created and succesfully tested. The script takes the JSON output from the GUI after being passed to the LLM, converts the nodes into coordinates, asks the Routingpy algorithm to make the same route and compares both the correct selected nodes as well as distance estimation in percentate.
+
+The following tests were made so far: 
+
+1 Test
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi).
+
+Results:  
+
+Gemini 2.5 Flash:  Failed to deliver correct format in response. 
+
+GPT 5.4 Mini:  Node Sequence Accuracy: 66.7%,  Distance Precision: 99.1%
+
+
+
+
+
   
