@@ -40,33 +40,42 @@ Compare Routes.py was created and succesfully tested. The script takes the JSON 
 
 The following tests were made so far: 
 
-1 Test
+Test 1
 Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi).
 
-Results:  
+Results:
 
-Gemini 2.5 Flash:  Failed to deliver correct format in response. 
+Gemini 2.5 Flash: Failed to deliver correct format in response.
 
-GPT 5.4 Mini:  Node Sequence Accuracy: 66.7%,  Distance Precision: 99.1%
+GPT 5.4 Mini: Node Sequence Accuracy: 66.7%, Distance Precision: 99.1%
 
-2 Test
+Test 2
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi).
+
+Results:
+
+Gemini 2.5 Flash: Failed to deliver correct format in response.
+
+GPT 5.4: Node Sequence Accuracy: 66.7%, Distance Precision: 99.1%
+
+
+Test 3
 Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 311112501 (Korkeavuorenkatu).
 
-Results:  
+Results:
 
-Gemini 2.5 Flash:  Failed to deliver correct format in response. 
+Gemini 2.5 Flash: Failed to deliver correct format in response.
 
-GPT 5.4:  Node Sequence Accuracy: 8.1%,  Distance Precision: 2.9%
+GPT 5.4: Node Sequence Accuracy: 8.1%, Distance Precision: 2.9%
 
-
-3 Test
+Test 4
 Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu).
 
-Results:  
+Results:
 
-Gemini 2.5 Flash:  Failed to deliver correct format in response. 
+Gemini 2.5 Flash: Failed to deliver correct format in response.
 
-GPT 5.4:  Node Sequence Accuracy: 25.0%,  Distance Precision: 24.1%
+GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 24.1%
 
 Comment: It appears that when the tests become more difficult the accuracy significantly diminishes even for GPT 5.4. 
 Gemini 2.5 Flash fails everytime to deliver a correct response format and keeps getting stuch with a response looking like this and stops short before delivering the full answer.  
