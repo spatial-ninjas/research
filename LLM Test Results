@@ -1,0 +1,28 @@
+LLM Route Test Results (updated 15/04 2025).
+
+1 Test
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi).
+
+Results:
+
+Gemini 2.5 Flash: Failed to deliver correct format in response.
+
+GPT 5.4 Mini: Node Sequence Accuracy: 66.7%, Distance Precision: 99.1%
+
+2 Test
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 311112501 (Korkeavuorenkatu).
+
+Results:
+
+Gemini 2.5 Flash: Failed to deliver correct format in response.
+
+GPT 5.4: Node Sequence Accuracy: 8.1%, Distance Precision: 2.9%
+
+3 Test
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu).
+
+Results:
+
+Gemini 2.5 Flash: Failed to deliver correct format in response.
+
+GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 24.1%
