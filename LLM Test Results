@@ -79,3 +79,31 @@ Gemini 2.5 Flash: Failed to deliver correct format in response.
 
 GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 24.1%
 
+Test 5
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 25291550 (Uudenmaankatu).
+
+Results:
+
+Gemini 2.5 Flash: Failed to deliver correct format in response.
+
+GPT 5.4 Mini: Node Sequence Accuracy: 15.8%, Distance Precision: 4.2%
+
+Test 6
+Find path between Origin Node: 313984203 (Bulewardi) to Destination Node: 3232013778 (Annankatu).
+
+Results:
+
+Gemini 2.5 Flash: Failed to deliver correct format in response.
+
+GPT 5.4: Failed to deliver correct format in response.
+
+Test 7
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 3228745582 (Hietalandenventa).
+
+Results:
+
+Gemini 2.5 Flash: Failed to deliver correct format in response.
+
+GPT 5.4: Failed to deliver correct format in response.
+
+
