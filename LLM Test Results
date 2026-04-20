@@ -40,10 +40,11 @@ Do not include any conversational text, only the JSON.
 
 """
 
-The Results were as follows: 
+The Results were as follows (updated 16/04 2026, Gemini thinking budget: Dynamic): 
+
 
 Test 1
-Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi).
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi). Max Output Tokens: 300
 
 Results:
 
@@ -52,7 +53,7 @@ Gemini 2.5 Flash: Failed to deliver correct format in response.
 GPT 5.4 Mini: Node Sequence Accuracy: 66.7%, Distance Precision: 99.1%
 
 Test 2
-Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi).
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi). Max Output Tokens: 512
 
 Results:
 
@@ -62,7 +63,7 @@ GPT 5.4: Node Sequence Accuracy: 66.7%, Distance Precision: 99.1%
 
 
 Test 3
-Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 311112501 (Korkeavuorenkatu).
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 311112501 (Korkeavuorenkatu). Max Output Tokens: 512
 
 Results:
 
@@ -71,7 +72,7 @@ Gemini 2.5 Flash: Failed to deliver correct format in response.
 GPT 5.4: Node Sequence Accuracy: 8.1%, Distance Precision: 2.9%
 
 Test 4
-Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu).
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 512
 
 Results:
 
@@ -80,7 +81,7 @@ Gemini 2.5 Flash: Failed to deliver correct format in response.
 GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 24.1%
 
 Test 5
-Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 25291550 (Uudenmaankatu).
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 25291550 (Uudenmaankatu). Max Output Tokens: 1024
 
 Results:
 
@@ -89,7 +90,7 @@ Gemini 2.5 Flash: Failed to deliver correct format in response.
 GPT 5.4 Mini: Node Sequence Accuracy: 15.8%, Distance Precision: 4.2%
 
 Test 6
-Find path between Origin Node: 313984203 (Bulewardi) to Destination Node: 3232013778 (Annankatu).
+Find path between Origin Node: 313984203 (Bulewardi) to Destination Node: 3232013778 (Annankatu). Max Output Tokens: 1024
 
 Results:
 
@@ -98,12 +99,55 @@ Gemini 2.5 Flash: Failed to deliver correct format in response.
 GPT 5.4: Failed to deliver correct format in response.
 
 Test 7
-Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 3228745582 (Hietalandenventa).
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 3228745582 (Hietalandenventa). Max Output Tokens: 1024
 
 Results:
 
 Gemini 2.5 Flash: Failed to deliver correct format in response.
 
 GPT 5.4: Failed to deliver correct format in response.
+
+
+
+Test Update 20/04 2026 (Gemini Thinking Budget: switched off, number of max input tokens varied)
+
+Test 8 
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 25291550 (Uudenmaankatu). Max Output Tokens: 1024
+
+Results:  Gemini 2.5 Flash: Failed to deliver correct format in response (No JSON found).
+
+GPT 5.4: Failed - Path empty or Origin Node not in network.
+
+Test 9 
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 1024
+
+Results: * Gemini 2.5 Flash: Failed to deliver correct format in response (No JSON found).
+
+GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 15.1% (Length: LLM 16.0m | Algorithm 106.0m).
+
+Test 10 
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 2048
+
+Results: Gemini 2.5 Flash: Failed to deliver correct format in response (No JSON found).
+
+GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 38.5% (Length: LLM 40.8m | Algorithm 106.0m).
+
+Test 11
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 1600
+
+Results:  Gemini 2.5 Flash: Node Sequence Accuracy: 25.0%, Distance Precision: 10.2% (Length: LLM 10.8m | Algorithm 106.0m).
+
+GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 24.1% (Length: LLM 25.5m | Algorithm 106.0m).
+
+Test 12
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 25291550 (Uudenmaankatu). Max Output Tokens: 1600
+
+Results:  Gemini 2.5 Flash: Node Sequence Accuracy: 11.5%, Distance Precision: 26.4% (Length: LLM 69.1m | Algorithm 262.0m).
+
+GPT 5.4: Failed - Path empty or Origin Node not in network.
+
+
+
+
 
 
