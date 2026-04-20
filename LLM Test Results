@@ -121,7 +121,7 @@ GPT 5.4: Failed - Path empty or Origin Node not in network.
 Test 9 
 Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 1024
 
-Results: * Gemini 2.5 Flash: Failed to deliver correct format in response (No JSON found).
+Results:  Gemini 2.5 Flash: Failed to deliver correct format in response (No JSON found).
 
 GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 15.1% (Length: LLM 16.0m | Algorithm 106.0m).
 
