@@ -91,3 +91,45 @@ GPT 5.4: Failed to deliver correct format in response.
 Comment: It appears that when the tests become more difficult the accuracy significantly diminishes even for GPT 5.4. Gemini 2.5 Flash fails everytime to deliver a correct response format and keeps getting stuch with a response looking like this and stops short before delivering the full answer.
 
 response_text"```json { "origin": "25291564", "
+
+
+Test Update 20/04 2026 (Gemini Thinking Budget: switched off, number of max input tokens varied)
+
+Test 8 
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 25291550 (Uudenmaankatu). Max Output Tokens: 1024
+
+Results:  Gemini 2.5 Flash: Failed to deliver correct format in response (No JSON found).
+
+GPT 5.4: Failed - Path empty or Origin Node not in network.
+
+Test 9 
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 1024
+
+Results:  Gemini 2.5 Flash: Failed to deliver correct format in response (No JSON found).
+
+GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 15.1% (Length: LLM 16.0m | Algorithm 106.0m).
+
+Test 10 
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 2048
+
+Results: Gemini 2.5 Flash: Failed to deliver correct format in response (No JSON found).
+
+GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 38.5% (Length: LLM 40.8m | Algorithm 106.0m).
+
+Test 11
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 1600
+
+Results:  Gemini 2.5 Flash: Node Sequence Accuracy: 25.0%, Distance Precision: 10.2% (Length: LLM 10.8m | Algorithm 106.0m).
+
+GPT 5.4: Node Sequence Accuracy: 25.0%, Distance Precision: 24.1% (Length: LLM 25.5m | Algorithm 106.0m).
+
+Test 12
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 25291550 (Uudenmaankatu). Max Output Tokens: 1600
+
+Results:  Gemini 2.5 Flash: Node Sequence Accuracy: 11.5%, Distance Precision: 26.4% (Length: LLM 69.1m | Algorithm 262.0m).
+
+GPT 5.4: Failed - Path empty or Origin Node not in network.
+
+
+
+
