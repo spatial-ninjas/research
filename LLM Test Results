@@ -147,7 +147,47 @@ Results:  Gemini 2.5 Flash: Node Sequence Accuracy: 11.5%, Distance Precision: 2
 GPT 5.4: Failed - Path empty or Origin Node not in network.
 
 
+NEW TESTS WITH UPDATED SSAL FILE (22/04 2026)
 
+Test 13
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 25291550 (Uudenmaankatu). Max Output Tokens: 1600. Number of swings: 2
 
+Results:  Gemini 2.5 Flash: Node Sequence Accuracy: 12.0%, Distance Precision: 25.5% (Length: LLM 66.8m | Algorithm 262.0m).
 
+GPT 5.4 Mini: Node Sequence Accuracy: 15.8%  Distance Precision: 6.4% (Length: LLM 16.7m | Algorithm 262.0m)
+
+Test 14
+Find path between Origin Node: 25291564 (Bulewardi) to Destination Node: 25291567 (Yrjonkatu). Max Output Tokens: 1600. Number of swings: 1
+
+Results:  Gemini 2.5 Flash: Node Sequence Accuracy: 25.0%, Distance Precision: 65.4% (Length: LLM 69.3m | Algorithm 106.0m).
+
+GPT 5.4: Node Sequence Accuracy: 25.0%  Distance Precision: 93.9% (Length: LLM 112.5m | Algorithm 106.0m)
+
+Test 15
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 3228745582 (Hietalandenventa). Max Output Tokens: 1600. Number of swings: 1
+
+Results:  Gemini 2.5 Flash: Failed to deliver correct response format.
+
+GPT 5.4:  Failed to deliver correct response format. 
+
+Test 16
+Find path between Origin Node: 313984203 (Bulewardi) to Destination Node: 3232013778 (Annankatu). Max Output Tokens: 1600. Number of swings: 1
+
+Results:  Gemini 2.5 Flash: Failed to deliver correct response format. 
+
+GPT 5.4: Node Sequence Accuracy: 16.0%  Distance Precision: 46.3% (Length: LLM 120.8m | Algorithm 261.0m)
+
+Test 17
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 311112501 (Korkeavuorenkatu). Max Output Tokens: 1600. Number of swings: 2
+
+Results:  Gemini 2.5 Flash: Failed to deliver correct response format.
+
+GPT 5.4: Node Sequence Accuracy: 5.4%  Distance Precision: 49.5% (Length: LLM 291.0m | Algorithm 588.0m)
+
+Test 18
+Find path between Origin Node: 25291537 (Bulewardi) to Destination Node: 313984198 (Bulewardi). Max Output Tokens: 1600. Number of swings: 0
+
+Results:  Gemini 2.5 Flash: Node Sequence Accuracy: 66.7%, Distance Precision: 99.1% (Length: LLM 11.1m | Algorithm 11.0m).
+
+GPT 5.4: Node Sequence Accuracy: 66.7%  Distance Precision: 99.1% (Length: LLM 11.1m | Algorithm 11.0m)
 
