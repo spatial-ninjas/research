@@ -132,5 +132,6 @@ The current route evaluator uses an approximate exploratory node-sequence compar
 
 ## See also
 
-- [docs/project_overview.md](docs/project_overview.md)
+- [CHANGELOG.md](CHANGELOG.md)
+- [scripts/README.md](scripts/README.md)
 - [results/summaries/](results/summaries/)
