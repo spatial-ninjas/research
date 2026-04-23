@@ -1,5 +1,6 @@
 import geopandas as gpd
 from collections import defaultdict
+import math
 
 
 def load_layers(gpkg_path, edges_layer, nodes_layer):
@@ -7,28 +8,49 @@ def load_layers(gpkg_path, edges_layer, nodes_layer):
     nodes = gpd.read_file(gpkg_path, layer=nodes_layer)
     return edges, nodes
 
-
 def build_node_map(nodes_gdf, node_id_col="osmid"):
-    """
-    Map node IDs -> coordinates (optional, mainly for validation/debug)
-    """
     node_map = {}
 
     for _, row in nodes_gdf.iterrows():
         node_id = str(row[node_id_col])
+
+        def safe_float(val):
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return None
+
         node_map[node_id] = {
-            "x": row.get("x"),
-            "y": row.get("y")
+            "x": safe_float(row.get("x")),
+            "y": safe_float(row.get("y"))
         }
 
     return node_map
 
 
+def calculate_bearing(x1, y1, x2, y2):
+    dx = x2 - x1
+    dy = y2 - y1
+
+    angle_rad = math.atan2(dx, dy)
+    angle_deg = math.degrees(angle_rad)
+
+    return (angle_deg + 360) % 360
+
+
+def bearing_to_cardinal(b):
+    dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    return dirs[int((b + 22.5) // 45) % 8]
+
+
 def build_adjacency_from_edges(
     edges_gdf,
+    node_map=None,
     u_col="u",
     v_col="v",
-    attr_map=None
+    attr_map=None,
+    include_coords=False,
+    include_direction=False
 ):
     if attr_map is None:
         attr_map = {
@@ -43,6 +65,7 @@ def build_adjacency_from_edges(
         u = str(row[u_col])
         v = str(row[v_col])
 
+        # ---- attributes ----
         attrs = {}
         for key, col in attr_map.items():
             val = row.get(col, None)
@@ -54,31 +77,57 @@ def build_adjacency_from_edges(
         name = attrs.get("name", "unknown")
         oneway = bool(attrs.get("oneway", False))
 
-        # Unique key removes duplicates
-        key_fwd = (v, length, name, oneway)
+        extra = {}
 
-        adj[u][key_fwd] = {
+        # ---- coordinates ----
+        if include_coords and node_map:
+            if u in node_map and v in node_map:
+                extra.update({
+                    "from_x": node_map[u]["x"],
+                    "from_y": node_map[u]["y"],
+                    "to_x": node_map[v]["x"],
+                    "to_y": node_map[v]["y"]
+                })
+
+        # ---- direction ----
+        if include_direction and node_map:
+            if u in node_map and v in node_map:
+                x1, y1 = node_map[u]["x"], node_map[u]["y"]
+                x2, y2 = node_map[v]["x"], node_map[v]["y"]
+
+                if None not in [x1, y1, x2, y2]:
+                    bearing = calculate_bearing(x1, y1, x2, y2)
+                    extra["dir"] = bearing_to_cardinal(bearing)
+
+        # ---- forward edge ----
+        data = {
             "to": v,
             "length": length,
             "name": name,
-            "oneway": oneway
+            "oneway": oneway,
+            **extra
         }
 
-        # reverse if not one-way
-        if not oneway:
-            key_rev = (u, length, name, oneway)
+        key_fwd = (v, length, name, oneway)
+        adj[u][key_fwd] = data
 
-            adj[v][key_rev] = {
-                "to": u,
-                "length": length,
-                "name": name,
-                "oneway": oneway
+        # ---- reverse edge ----
+        if not oneway:
+            rev_data = data.copy()
+
+            if include_direction and "dir" in rev_data:
+                opposite = {
+                    "N": "S", "NE": "SW", "E": "W", "SE": "NW",
+                    "S": "N", "SW": "NE", "W": "E", "NW": "SE"
+                }
+                rev_data["dir"] = opposite.get(rev_data["dir"])
+
+            adj[v][(u, length, name, oneway)] = {
+                **rev_data,
+                "to": u
             }
 
-    # Back to list
-    adj = {k: list(v.values()) for k, v in adj.items()}
-
-    return adj
+    return {k: list(v.values()) for k, v in adj.items()}
 
 
 def format_ssal_compact(adj, include=None):
@@ -89,8 +138,8 @@ def format_ssal_compact(adj, include=None):
 
     for node, neighbors in adj.items():
         lines.append(f"{node}:")
-        for n in neighbors:
 
+        for n in neighbors:
             parts = []
 
             for key in include:
@@ -103,6 +152,10 @@ def format_ssal_compact(adj, include=None):
                     parts.append(f"{val}")
                 elif key == "oneway":
                     parts.append("1w" if val else "2w")
+                elif key == "dir":
+                    parts.append(val)
+                elif key in ["from_x", "from_y", "to_x", "to_y"]:
+                    parts.append(f"{key}={round(val, 5)}")
                 else:
                     parts.append(str(val))
 
@@ -120,53 +173,38 @@ def gpkg_to_ssal(
     v_col="v",
     node_id_col="osmid",
     attr_map=None,
-    include_attrs=None
+    include_attrs=None,
+    include_coords=False,
+    include_direction=False
 ):
-    """
-    Full pipeline
-    """
-
     edges, nodes = load_layers(gpkg_path, edges_layer, nodes_layer)
 
     node_map = build_node_map(nodes, node_id_col=node_id_col)
 
     adj = build_adjacency_from_edges(
         edges,
+        node_map=node_map,
         u_col=u_col,
         v_col=v_col,
-        attr_map=attr_map
+        attr_map=attr_map,
+        include_coords=include_coords,
+        include_direction=include_direction
     )
 
-    ssal = format_ssal_compact(adj, include=include_attrs)
-
-    return ssal
+    return format_ssal_compact(adj, include=include_attrs)
 
 
-"""    
 # Run gpkg_to_ssal with this part
-
+"""
 gpkg_path = "C:/Users/eemil/Downloads/osm_southern_helsinki_slimmed_cropped.gpkg"
 
 ssal = gpkg_to_ssal(
     gpkg_path=gpkg_path,
     edges_layer="slimmed_cropped_edges",
     nodes_layer="slimmed_cropped_nodes",
-
-    u_col="u",
-    v_col="v",
-    node_id_col="osmid",
-
-    attr_map={
-        "type": "highway",
-        "length": "length",
-        "name": "name",
-        "oneway": "oneway",
-        "speed": "maxspeed",
-        "lanes": "lanes"
-    },
-
-    include_attrs=["length", "name", "oneway"]
+    include_direction=True,
+    include_coords=False,
+    include_attrs=["length","name", "oneway", "dir", "from_x", "from_y", "to_x", "to_y"]
 )
-
 print(ssal)
 """
