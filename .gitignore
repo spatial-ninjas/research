@@ -8,5 +8,6 @@ __pycache__/
 .ipynb_checkpoints/
 .env
 .env.*
+!.env.example
 .idea/
 .vscode/

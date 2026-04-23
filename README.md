@@ -34,6 +34,30 @@ Main evaluation concerns:
 6. Evaluate the results with the scripts here
 7. Record summaries and notes for later review
 
+## Setup
+
+Create and activate a virtual environment first.
+
+### macOS / Linux
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Create a repo-root `.env` file:
+
+```dotenv
+ORS_API_KEY=your_ors_api_key_here
+GPKG_PATH=data/raw/routing_networks/osm_southern_helsinki_slimmed_cropped.gpkg
+HISTORY_JSON=data/raw/llm_history_exports/llm_compare_history_2026-04-20.json
+NODES_LAYER=slimmed_cropped_nodes
+```
+
+See [scripts/README.md](scripts/README.md) for script-specific usage details.
+
 ## Core components
 
 ### SSAL conversion
@@ -55,6 +79,17 @@ Current location:
 ### Comparison interface and history
 
 The project also uses a comparison interface (`app.py` in the separate dashboard repo) for side-by-side model testing and persisted history. That history is later exported and analyzed here.
+
+### Evaluation scripts
+
+The current evaluation workflow lives under:
+
+- [scripts/](scripts/)
+
+In particular:
+
+- [scripts/evaluate_history.py](scripts/evaluate_history.py) evaluates exported dashboard history against the routing network and prints per-entry and summary results
+- [scripts/README.md](scripts/README.md) documents dependencies, environment setup, and usage
 
 ## SSAL / data logic
 
@@ -90,6 +125,10 @@ Early experiment notes indicate:
 - output-format reliability was itself a major issue
 
 Detailed chronology and test-by-test notes are kept in the supporting docs, not in the README.
+
+## Evaluation note
+
+The current route evaluator uses an approximate exploratory node-sequence comparison between LLM-produced node paths and OpenRouteService route geometry. This is useful for rough comparison, but it is not yet a fully graph-native path-equivalence metric.
 
 ## See also
 
