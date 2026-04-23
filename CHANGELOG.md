@@ -12,6 +12,8 @@ All notable changes to this repository are documented here.
 - Added `requirements.txt` for Python dependency installation
 - Added `.env.example` for evaluator configuration
 - Added `scripts/README.md` with setup, configuration, and usage instructions
+- Added `scripts/build_ssal.py` as the CLI entry point for regenerating the SSAL artifact
+- Added route-evaluation summary output under `results/summaries/`
 
 ### Changed
 
@@ -26,6 +28,8 @@ All notable changes to this repository are documented here.
 - Improved evaluator reporting for malformed and cropped JSON outputs
 - Added run-level summary reporting for evaluated and skipped entries
 - Improved evaluator handling for mixed dashboard export history entries
+- Made SSAL equivalence checking reusable by removing hardcoded file names and supporting configurable inputs
+- Updated SSAL build defaults to match the currently versioned artifact configuration
 
 ### Archived
 
@@ -38,6 +42,7 @@ All notable changes to this repository are documented here.
 - Removed move-only and upload-style noise from the cleaned branch history
 - Preserved original authorship where appropriate while rebuilding the cleaned history
 - Removed `docs/project_overview.md` after splitting its role across `README.md`, `scripts/README.md`, `CHANGELOG.md`, and `results/summaries/`
+- Completed a final filename-normalization pass across the active workflow areas
 
 ## 2026-04-20
 

@@ -2,7 +2,34 @@
 
 Utility scripts for evaluating routing-model outputs against the Helsinki routing network artifacts versioned in this repository.
 
-## Current script
+## Current scripts
+
+### `build_ssal.py`
+
+Builds a compact SSAL text artifact from the GeoPackage road-network input.
+
+It currently:
+
+- loads the configured edge and node layers from the GeoPackage
+- converts the network into the repository SSAL text format using `research.ssal`
+- writes the result to the configured output path
+
+Default behavior:
+
+- GeoPackage input: `data/raw/routing_networks/osm_southern_helsinki_slimmed_cropped.gpkg`
+- edges layer: `slimmed_cropped_edges`
+- nodes layer: `slimmed_cropped_nodes`
+- output: `data/derived/ssal/ssal_osm_southern_helsinki_slimmed_cropped.txt`
+
+The current default output format matches the historical SSAL artifact recipe:
+
+- `length`
+- `name`
+- `oneway`
+- `from_x`
+- `from_y`
+- `to_x`
+- `to_y`
 
 ### `evaluate_history.py`
 
@@ -58,6 +85,48 @@ Optional:
 - `HISTORY_JSON`
 - `NODES_LAYER`
 
+## Running the SSAL builder
+
+### Default run
+
+```bash
+python scripts/build_ssal.py
+```
+
+This uses the default historical SSAL recipe:
+
+```bash
+python scripts/build_ssal.py \
+  --include-coords \
+  --include-attrs length name oneway from_x from_y to_x to_y
+```
+
+### Include direction instead
+
+```bash
+python scripts/build_ssal.py \
+  --include-direction \
+  --include-attrs length name oneway dir
+```
+
+### Override main inputs
+
+```bash
+python scripts/build_ssal.py \
+  --gpkg-path data/raw/routing_networks/osm_southern_helsinki_slimmed_cropped.gpkg \
+  --edges-layer slimmed_cropped_edges \
+  --nodes-layer slimmed_cropped_nodes \
+  --output data/derived/ssal/custom_ssal.txt \
+  --include-coords \
+  --include-attrs length name oneway from_x from_y to_x to_y
+```
+
+### Show help
+
+```bash
+python scripts/build_ssal.py --help
+```
+
 ## Running the evaluator
 
 ### Default run
@@ -96,6 +165,8 @@ python scripts/evaluate_history.py \
 
 ## Notes
 
+- `build_ssal.py` is the CLI entry point for regenerating the versioned SSAL artifact.
+- The reusable SSAL conversion logic lives in `research/ssal.py`.
 - The evaluator currently uses an approximate exploratory node-sequence comparison against OpenRouteService route geometry.
 - This is useful for rough comparison, but it is not yet a fully graph-native path-equivalence metric.
 - Some history entries may be skipped because the exported model response contains no JSON, cropped JSON, provider errors, or a non-routing prompt.

@@ -27,7 +27,7 @@ Main evaluation concerns:
 ## Current workflow
 
 1. Prepare an OSM-derived routing network
-2. Convert the network into SSAL
+2. Build the SSAL artifact from the GeoPackage input
 3. Run routing prompts in [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard)
 4. Export the dashboard history as JSON
 5. Store the export in this repository
@@ -62,12 +62,29 @@ See [scripts/README.md](scripts/README.md) for script-specific usage details.
 
 ### SSAL conversion
 
-The OSM road network is converted into a simplified semantic adjacency list to reduce token usage while keeping the routing structure that matters. The reduced representation keeps essentials such as node IDs, street names, lengths, and one-way status.
+The OSM road network is converted into a simplified semantic adjacency list to reduce token usage while keeping the routing structure that matters.
 
-Current location:
+The reusable conversion logic lives in:
+
 - [research/ssal.py](research/ssal.py)
 
+The CLI entry point for regenerating the versioned SSAL artifact is:
+
+- [scripts/build_ssal.py](scripts/build_ssal.py)
+
 Stable generated SSAL text artifacts are intentionally versioned in this repo.
+
+### Evaluation scripts
+
+The current script workflow lives under:
+
+- [scripts/](scripts/)
+
+In particular:
+
+- [scripts/build_ssal.py](scripts/build_ssal.py) builds the compact SSAL text artifact from the GeoPackage road-network input
+- [scripts/evaluate_history.py](scripts/evaluate_history.py) evaluates exported dashboard history against the routing network and prints per-entry and summary results
+- [scripts/README.md](scripts/README.md) documents dependencies, configuration, and usage
 
 ### LLM routing prototype
 
@@ -80,38 +97,36 @@ Current location:
 
 The project also uses a comparison interface (`app.py` in the separate dashboard repo) for side-by-side model testing and persisted history. That history is later exported and analyzed here.
 
-### Evaluation scripts
-
-The current evaluation workflow lives under:
-
-- [scripts/](scripts/)
-
-In particular:
-
-- [scripts/evaluate_history.py](scripts/evaluate_history.py) evaluates exported dashboard history against the routing network and prints per-entry and summary results
-- [scripts/README.md](scripts/README.md) documents dependencies, environment setup, and usage
-
-## SSAL / data logic
-
-The project overview describes the SSAL reduction roughly as follows:
-
-- keep node IDs and x/y coordinates
-- keep source/target connectivity
-- keep street names, edge lengths, and one-way status
-- drop less essential metadata such as speed limits, lane counts, and road types
-
-The goal is to preserve enough structure for route reasoning while reducing token cost.
-
 ## Repository layout
 
 - `data/raw/routing_networks/` — OSM-derived GeoPackage inputs
 - `data/derived/ssal/` — stable generated SSAL text artifacts
 - `data/raw/llm_history_exports/` — exported dashboard history JSONs
 - `research/` — reusable Python logic
-- `scripts/` — executable evaluation / analysis scripts
+- `scripts/` — executable SSAL generation and evaluation scripts
 - `results/summaries/` — experiment notes and summaries
-- `docs/` — supporting documentation
 - `archive/prototypes/` — older prototype scripts
+
+## Common commands
+
+Build the default SSAL artifact:
+
+```bash
+python scripts/build_ssal.py
+```
+
+Evaluate the default exported history:
+
+```bash
+python scripts/evaluate_history.py
+```
+
+Show script options:
+
+```bash
+python scripts/build_ssal.py --help
+python scripts/evaluate_history.py --help
+```
 
 ## Current status
 
@@ -124,7 +139,7 @@ Early experiment notes indicate:
 - performance worsened on more difficult routes
 - output-format reliability was itself a major issue
 
-Detailed chronology and test-by-test notes are kept in the supporting docs, not in the README.
+Detailed chronology and test-by-test notes are kept in the supporting docs, summaries, and changelog rather than in the README.
 
 ## Evaluation note
 
