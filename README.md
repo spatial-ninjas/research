@@ -1,120 +1,97 @@
-# Research Workspace
+# research
 
-This repository contains the research workspace for the project
+Research workspace for evaluating LLM routing behavior on a simplified street-network representation of Southern Helsinki.
 
-**LLM Spatial Reasoning: Evaluating and Enhancing Geographic Cognition in Language Models.**
+This repository contains the **research and evaluation side** of the project: routing-network inputs, stable SSAL artifacts, exported experiment inputs, and analysis scripts. The broader project compares GPT-family and Gemini-family models on routing tasks over an OpenStreetMap-derived Helsinki network, using [Routingpy](https://routingpy.readthedocs.io/en/latest/) as the reference baseline.
 
-The repository will host materials related to:
+## Relationship to [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard)
 
-- literature reviews and research notes
-- experiment code
-- benchmark implementations
-- datasets used for evaluation
-- documentation and project outputs
+The project is split across two repositories:
 
+- [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard): run prompts, compare OpenAI and Gemini outputs side by side, and store/export history
+- [research](https://github.com/spatial-ninjas/research): prepare routing artifacts, version experiment inputs, and evaluate routing results
 
-## Report Build System
+In practice, prompts are run in the dashboard, the history is exported as JSON, and the exported results are analyzed here.
 
-The project report is written in **Markdown** and compiled using **Pandoc**.
+## Project scope
 
-A `Makefile` is provided to automate the process of merging all documentation and generating the final outputs.
+The project studies how LLMs handle route-generation tasks when given a compact graph-like representation of a real street network instead of a standard map UI. The current reference map is a selected area of Southern Helsinki derived from OpenStreetMap. The current evaluation focuses on GPT and Gemini models.
 
-## Build the report
+Main evaluation concerns:
 
-To build all report formats:
+- structured output correctness
+- plausible node sequence selection
+- distance estimation quality
+- robustness as route difficulty increases
 
-```bash
-make all
-````
+## Current workflow
 
-This generates:
+1. Prepare an OSM-derived routing network
+2. Convert the network into SSAL
+3. Run routing prompts in [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard)
+4. Export the dashboard history as JSON
+5. Store the export in this repository
+6. Evaluate the results with the scripts here
+7. Record summaries and notes for later review
 
-```
-build/spatial-ninjas-report.pdf
-build/spatial-ninjas-report.html
-```
+## Core components
 
-You can also build individual formats:
+### SSAL conversion
 
-```bash
-make pdf
-make html
-```
+The OSM road network is converted into a simplified semantic adjacency list to reduce token usage while keeping the routing structure that matters. The reduced representation keeps essentials such as node IDs, street names, lengths, and one-way status.
 
-Other useful commands:
+Current location:
+- [research/ssal.py](research/ssal.py)
 
-```bash
-make merge     # merge markdown sources into build/merged.md
-make sources   # list detected markdown source files
-make clean     # remove build artifacts
-make help      # list available targets
-```
+Stable generated SSAL text artifacts are intentionally versioned in this repo.
 
-The build pipeline:
+### LLM routing prototype
 
-1. discovers markdown files in the `docs/` directory
-2. merges them into a single document
-3. runs Pandoc to produce PDF and HTML outputs
-4. formats citations using the IEEE CSL style
+An earlier prototype script feeds SSAL data and a routing prompt to an LLM and expects a route in JSON format. It is kept for historical reference and is not treated as the main current workflow.
 
+Current location:
+- [archive/prototypes/](archive/prototypes/)
 
-## Repository Structure
+### Comparison interface and history
 
-```
-docs/                project documentation and literature summaries
-  00-frontmatter/    report introduction and overview
-  members/           paper summaries written by individual members
-  shared/            synthesis and next steps written collaboratively
-  99-backmatter/     references and appendix
-template/            Pandoc LaTeX header and citation style
-references.bib       shared bibliography database
-report-metadata.yaml document metadata used by Pandoc
-Makefile             report build automation
-```
+The project also uses a comparison interface (`app.py` in the separate dashboard repo) for side-by-side model testing and persisted history. That history is later exported and analyzed here.
 
-### Member summaries
+## SSAL / data logic
 
-Each project member writes their paper summary in:
+The project overview describes the SSAL reduction roughly as follows:
 
-```
-docs/members/<name>/
-```
+- keep node IDs and x/y coordinates
+- keep source/target connectivity
+- keep street names, edge lengths, and one-way status
+- drop less essential metadata such as speed limits, lane counts, and road types
 
-These are automatically included in the report during the build process.
+The goal is to preserve enough structure for route reasoning while reducing token cost.
 
-### Shared sections
+## Repository layout
 
-Collaborative sections are stored in:
+- `data/raw/routing_networks/` — OSM-derived GeoPackage inputs
+- `data/derived/ssal/` — stable generated SSAL text artifacts
+- `data/raw/llm_history_exports/` — exported dashboard history JSONs
+- `research/` — reusable Python logic
+- `scripts/` — executable evaluation / analysis scripts
+- `results/summaries/` — experiment notes and summaries
+- `docs/` — supporting documentation
+- `archive/prototypes/` — older prototype scripts
 
-```
-docs/shared/
-```
+## Current status
 
-Examples include:
+This repo reflects an evolving research workflow, not a finished software product.
 
-* literature synthesis
-* proposed next steps for experiments
+Early experiment notes indicate:
 
+- GPT-family models sometimes produced partially correct routes and distance estimates
+- Gemini 2.5 Flash often failed to return the expected JSON format
+- performance worsened on more difficult routes
+- output-format reliability was itself a major issue
 
-## References
+Detailed chronology and test-by-test notes are kept in the supporting docs, not in the README.
 
-Bibliographic references used in the project are stored in:
+## See also
 
-```
-references.bib
-```
-
-Citations inside markdown files use standard Pandoc citation syntax:
-
-```
-@paper_key
-```
-
-The final report is formatted using the **IEEE citation style**.
-
-
-## Project Management
-
-Task planning and sprint tracking are handled via the project board:
-
-https://github.com/orgs/spatial-ninjas/projects/1
+- [docs/project_overview.md](docs/project_overview.md)
+- [results/summaries/](results/summaries/)
