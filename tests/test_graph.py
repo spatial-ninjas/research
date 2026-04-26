@@ -18,7 +18,13 @@ import dataclasses
 
 import pytest
 
-from research.graph import Edge, Graph, build_graph_from_ssal, parse_edge_attrs
+from research.graph import (
+    Edge,
+    Graph,
+    build_graph_from_ssal,
+    dijkstra_shortest_path,
+    parse_edge_attrs,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -570,3 +576,227 @@ B:
 
     assert edge is not None
     assert edge.length == -1.0
+
+
+# ---------------------------------------------------------------------------
+# Dijkstra shortest path
+# ---------------------------------------------------------------------------
+
+
+DIJKSTRA_SSAL = """
+A:
+  B {1.0, Alpha Street, 2w}
+  C {5.0, Gamma Street, 1w}
+B:
+  C {1.0, Beta Street, 2w}
+  D {6.0, Long Road, 1w}
+C:
+  D {2.0, Delta Street, 1w}
+D:
+E:
+  F {3.0, Echo Street, 1w}
+F:
+""".strip()
+
+
+def test_dijkstra_shortest_path_prefers_lower_total_length():
+    """Dijkstra should choose the lower-cost multi-hop path over a direct edge."""
+    graph = build_graph_from_ssal(DIJKSTRA_SSAL)
+
+    result = dijkstra_shortest_path(graph, "A", "C")
+
+    assert result == {
+        "ok": True,
+        "origin": "A",
+        "destination": "C",
+        "path": ["A", "B", "C"],
+        "total_length": 2.0,
+    }
+
+
+def test_dijkstra_shortest_path_finds_longer_multi_hop_route():
+    """Dijkstra should return the lowest-cost route across multiple hops."""
+    graph = build_graph_from_ssal(DIJKSTRA_SSAL)
+
+    result = dijkstra_shortest_path(graph, "A", "D")
+
+    assert result == {
+        "ok": True,
+        "origin": "A",
+        "destination": "D",
+        "path": ["A", "B", "C", "D"],
+        "total_length": 4.0,
+    }
+
+
+def test_dijkstra_origin_equals_destination_returns_zero_length_path():
+    """A route from a node to itself should have length zero."""
+    graph = build_graph_from_ssal(DIJKSTRA_SSAL)
+
+    result = dijkstra_shortest_path(graph, "A", "A")
+
+    assert result == {
+        "ok": True,
+        "origin": "A",
+        "destination": "A",
+        "path": ["A"],
+        "total_length": 0.0,
+    }
+
+
+def test_dijkstra_unknown_origin_returns_failure_result():
+    """Unknown origin should return a structured failure instead of raising."""
+    graph = build_graph_from_ssal(DIJKSTRA_SSAL)
+
+    result = dijkstra_shortest_path(graph, "UNKNOWN", "A")
+
+    assert result == {
+        "ok": False,
+        "reason": "unknown_origin",
+        "origin": "UNKNOWN",
+        "destination": "A",
+    }
+
+
+def test_dijkstra_unknown_destination_returns_failure_result():
+    """Unknown destination should return a structured failure instead of raising."""
+    graph = build_graph_from_ssal(DIJKSTRA_SSAL)
+
+    result = dijkstra_shortest_path(graph, "A", "UNKNOWN")
+
+    assert result == {
+        "ok": False,
+        "reason": "unknown_destination",
+        "origin": "A",
+        "destination": "UNKNOWN",
+    }
+
+
+def test_dijkstra_no_path_returns_failure_result():
+    """If destination is unreachable, Dijkstra should return reason='no_path'."""
+    graph = build_graph_from_ssal(DIJKSTRA_SSAL)
+
+    result = dijkstra_shortest_path(graph, "D", "A")
+
+    assert result == {
+        "ok": False,
+        "reason": "no_path",
+        "origin": "D",
+        "destination": "A",
+    }
+
+
+def test_dijkstra_disconnected_component_returns_no_path():
+    """Dijkstra should not cross disconnected components."""
+    graph = build_graph_from_ssal(DIJKSTRA_SSAL)
+
+    result = dijkstra_shortest_path(graph, "A", "F")
+
+    assert result == {
+        "ok": False,
+        "reason": "no_path",
+        "origin": "A",
+        "destination": "F",
+    }
+
+
+def test_dijkstra_uses_directed_edges_only():
+    """Dijkstra should not infer reverse edges that are not present in SSAL."""
+    graph = build_graph_from_ssal(DIJKSTRA_SSAL)
+
+    result = dijkstra_shortest_path(graph, "C", "A")
+
+    assert result == {
+        "ok": False,
+        "reason": "no_path",
+        "origin": "C",
+        "destination": "A",
+    }
+
+
+def test_dijkstra_rejects_negative_edge_length():
+    """Dijkstra should fail loudly when traversing a negative-weight edge."""
+    ssal = """
+A:
+  B {-1.0, Negative Road, 1w}
+B:
+""".strip()
+
+    graph = build_graph_from_ssal(ssal)
+
+    with pytest.raises(
+        ValueError,
+        match="Dijkstra cannot handle negative edge length: A -> B = -1.0",
+    ):
+        dijkstra_shortest_path(graph, "A", "B")
+
+
+def test_dijkstra_does_not_raise_for_unreachable_negative_edge():
+    """A negative edge in an unreachable component should not affect the result."""
+    ssal = """
+A:
+  B {1.0, Road, 1w}
+B:
+C:
+  D {-1.0, Negative Road, 1w}
+D:
+""".strip()
+
+    graph = build_graph_from_ssal(ssal)
+
+    result = dijkstra_shortest_path(graph, "A", "B")
+
+    assert result == {
+        "ok": True,
+        "origin": "A",
+        "destination": "B",
+        "path": ["A", "B"],
+        "total_length": 1.0,
+    }
+
+
+def test_dijkstra_handles_target_only_destination_node():
+    """A target-only node should still be reachable as a destination."""
+    ssal = """
+A:
+  B {1.0, Road, 1w}
+""".strip()
+
+    graph = build_graph_from_ssal(ssal)
+
+    result = dijkstra_shortest_path(graph, "A", "B")
+
+    assert result == {
+        "ok": True,
+        "origin": "A",
+        "destination": "B",
+        "path": ["A", "B"],
+        "total_length": 1.0,
+    }
+
+
+def test_dijkstra_tie_breaks_equal_cost_frontier_by_smaller_node_id():
+    """Equal-cost frontier nodes should be expanded by lexicographic node ID.
+
+    The SSAL intentionally lists C before B. The expected path still goes
+    through B because the priority queue orders equal-distance frontier nodes
+    by node ID, not by SSAL edge order.
+    """
+    ssal = """
+A:
+  C {1.0, Road AC, 1w}
+  B {1.0, Road AB, 1w}
+B:
+  D {1.0, Road BD, 1w}
+C:
+  D {1.0, Road CD, 1w}
+D:
+""".strip()
+
+    graph = build_graph_from_ssal(ssal)
+
+    result = dijkstra_shortest_path(graph, "A", "D")
+
+    assert result["ok"] is True
+    assert result["total_length"] == 2.0
+    assert result["path"] == ["A", "B", "D"]

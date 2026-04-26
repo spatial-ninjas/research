@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import heapq
 import re
 from typing import Any
 
@@ -130,3 +131,90 @@ def build_graph_from_ssal(ssal_text: str) -> Graph:
         raise ValueError(f"Could not parse SSAL line {line_number}: {line!r}")
 
     return Graph(adjacency=adjacency)
+
+
+def dijkstra_shortest_path(
+    graph: Graph,
+    origin: str,
+    destination: str,
+) -> dict[str, Any]:
+    if origin not in graph.adjacency:
+        return {
+            "ok": False,
+            "reason": "unknown_origin",
+            "origin": origin,
+            "destination": destination,
+        }
+
+    if destination not in graph.adjacency:
+        return {
+            "ok": False,
+            "reason": "unknown_destination",
+            "origin": origin,
+            "destination": destination,
+        }
+
+    if origin == destination:
+        return {
+            "ok": True,
+            "origin": origin,
+            "destination": destination,
+            "path": [origin],
+            "total_length": 0.0,
+        }
+
+    distances: dict[str, float] = {origin: 0.0}
+    previous: dict[str, str | None] = {origin: None}
+
+    # Heap entries are ordered by (distance, node_id).
+	# This makes equal-distance frontier expansion deterministic:
+	# smaller node IDs are expanded first using lexicographic string order.
+    queue: list[tuple[float, str]] = [(0.0, origin)]
+
+    while queue:
+        current_distance, node = heapq.heappop(queue)
+
+        if node == destination:
+            break
+
+        if current_distance > distances.get(node, float("inf")):
+            continue
+
+        for edge in graph.adjacency.get(node, []):
+            if edge.length < 0:
+                raise ValueError(
+                    f"Dijkstra cannot handle negative edge length: "
+                    f"{edge.source} -> {edge.target} = {edge.length}"
+                )
+
+            new_distance = current_distance + edge.length
+
+            if new_distance < distances.get(edge.target, float("inf")):
+                distances[edge.target] = new_distance
+                previous[edge.target] = node
+                heapq.heappush(queue, (new_distance, edge.target))
+
+    if destination not in distances:
+        return {
+            "ok": False,
+            "reason": "no_path",
+            "origin": origin,
+            "destination": destination,
+        }
+
+    path: list[str] = []
+    node: str | None = destination
+
+    while node is not None:
+        path.append(node)
+        node = previous[node]
+
+    path.reverse()
+
+    return {
+        "ok": True,
+        "origin": origin,
+        "destination": destination,
+        "path": path,
+        "total_length": distances[destination],
+    }
