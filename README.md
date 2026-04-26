@@ -11,7 +11,7 @@ The project is split across two repositories:
 - [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard): run prompts, compare OpenAI and Gemini outputs side by side, and store/export history
 - [research](https://github.com/spatial-ninjas/research): prepare routing artifacts, version experiment inputs, and evaluate routing results
 
-In practice, prompts are run in the dashboard, the history is exported as JSON, and the exported results are analyzed here.
+The dashboard can use this repository as a local editable Python package during development. This allows the dashboard to import reusable logic from `research` without copying code between repositories.
 
 ## Project scope
 
@@ -45,6 +45,49 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+````
+
+### Local editable install
+
+This repository can also be installed as a local editable Python package. This is useful when working with the sibling [`llm-compare-dashboard`](https://github.com/spatial-ninjas/llm-compare-dashboard) repository, so the dashboard can import reusable research utilities without copying code.
+
+Expected local folder layout:
+
+```text
+spatial-ninjas/
+  research/
+  llm-compare-dashboard/
+```
+
+From inside `llm-compare-dashboard`:
+
+```bash
+source .venv/bin/activate
+pip install -e ../research
+```
+
+If `llm-compare-dashboard/requirements.txt` includes:
+
+```txt
+-e ../research
+```
+
+then running the dashboard dependency install is enough:
+
+```bash
+pip install -r requirements.txt
+```
+
+Verify the import with:
+
+```bash
+python -c "from research.ssal import gpkg_to_ssal; print('ok')"
+```
+
+The package name is `spatial-ninjas-research`, while the Python import path remains:
+
+```python
+from research.ssal import gpkg_to_ssal
 ```
 
 Create a repo-root `.env` file:
