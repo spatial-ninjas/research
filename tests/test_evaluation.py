@@ -7,7 +7,7 @@ and top-level route-response evaluation.
 
 import pytest
 
-from research.evaluation import clean_json, extract_path
+from research.evaluation import clean_json, extract_declared_length, extract_path
 
 
 # ---------------------------------------------------------------------------
@@ -327,3 +327,105 @@ def test_extract_path_allows_route_entries_as_strings_for_compatibility():
     }
 
     assert extract_path(route_json) == ["A", "B", "D"]
+
+
+# ---------------------------------------------------------------------------
+# Declared length extraction
+# ---------------------------------------------------------------------------
+
+
+def test_extract_declared_length_from_numeric_total_length():
+    """Numeric total_length should be returned as a float."""
+    route_json = {
+        "total_length": 3.5,
+    }
+
+    assert extract_declared_length(route_json) == 3.5
+
+
+def test_extract_declared_length_from_integer_total_length():
+    """Integer total_length should still normalize to float."""
+    route_json = {
+        "total_length": 3,
+    }
+
+    assert extract_declared_length(route_json) == 3.0
+
+
+def test_extract_declared_length_from_numeric_string_total_length():
+    """String total_length is accepted because LLMs may quote numbers."""
+    route_json = {
+        "total_length": "3.5",
+    }
+
+    assert extract_declared_length(route_json) == 3.5
+
+
+def test_extract_declared_length_from_numeric_string_with_whitespace():
+    """Whitespace around a numeric string should not prevent parsing."""
+    route_json = {
+        "total_length": "  3.5  ",
+    }
+
+    assert extract_declared_length(route_json) == 3.5
+
+
+def test_extract_declared_length_returns_none_when_total_length_is_missing():
+    """Missing total_length means the model did not declare a route length."""
+    route_json = {}
+
+    assert extract_declared_length(route_json) is None
+
+
+def test_extract_declared_length_returns_none_when_total_length_is_none():
+    """Explicit null total_length should be treated as missing."""
+    route_json = {
+        "total_length": None,
+    }
+
+    assert extract_declared_length(route_json) is None
+
+
+def test_extract_declared_length_returns_none_for_non_numeric_string():
+    """Non-numeric total_length should not crash evaluation."""
+    route_json = {
+        "total_length": "unknown",
+    }
+
+    assert extract_declared_length(route_json) is None
+
+
+def test_extract_declared_length_returns_none_for_list_value():
+    """Unexpected structured values should not crash evaluation."""
+    route_json = {
+        "total_length": [3.5],
+    }
+
+    assert extract_declared_length(route_json) is None
+
+
+def test_extract_declared_length_returns_none_for_dict_value():
+    """Unexpected object values should not crash evaluation."""
+    route_json = {
+        "total_length": {"value": 3.5},
+    }
+
+    assert extract_declared_length(route_json) is None
+
+
+def test_extract_declared_length_allows_zero_length():
+    """Zero is valid for origin == destination cases."""
+    route_json = {
+        "total_length": 0,
+    }
+
+    assert extract_declared_length(route_json) == 0.0
+
+
+def test_extract_declared_length_allows_negative_length_for_later_validation():
+    """Parsing is separate from deciding whether a declared length is sensible."""
+    route_json = {
+        "total_length": -1.0,
+    }
+
+    assert extract_declared_length(route_json) == -1.0

@@ -71,3 +71,14 @@ def extract_path(route_json: dict[str, Any]) -> list[str]:
             path.append(item)
 
     return path
+
+
+def extract_declared_length(route_json: dict[str, Any]) -> float | None:
+    """Return the model-declared total_length if it can be parsed."""
+    try:
+        value = route_json.get("total_length")
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
