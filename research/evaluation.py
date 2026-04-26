@@ -82,3 +82,47 @@ def extract_declared_length(route_json: dict[str, Any]) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def validate_candidate_path(
+    graph: Graph,
+    path: list[str],
+    origin: str,
+    destination: str,
+) -> dict[str, Any]:
+    """Validate a candidate path against the directed graph."""
+    errors: list[str] = []
+
+    if not path:
+        errors.append("empty_path")
+    else:
+        if path[0] != origin:
+            errors.append("wrong_origin")
+        if path[-1] != destination:
+            errors.append("wrong_destination")
+
+    unknown_nodes = [node for node in path if not graph.has_node(node)]
+    if unknown_nodes:
+        errors.append("unknown_nodes")
+
+    missing_edges: list[list[str]] = []
+
+    if path and not unknown_nodes:
+        for source, target in zip(path, path[1:]):
+            if graph.get_edge(source, target) is None:
+                missing_edges.append([source, target])
+
+    if missing_edges:
+        errors.append("missing_edges")
+
+    computed_length = None
+    if not errors:
+        computed_length = graph.path_length(path)
+
+    return {
+        "valid": not errors,
+        "errors": errors,
+        "unknown_nodes": unknown_nodes,
+        "missing_edges": missing_edges,
+        "computed_length": computed_length,
+    }

@@ -7,7 +7,32 @@ and top-level route-response evaluation.
 
 import pytest
 
-from research.evaluation import clean_json, extract_declared_length, extract_path
+from research.evaluation import (
+    clean_json,
+    extract_declared_length,
+    extract_path,
+    validate_candidate_path,
+)
+from research.graph import build_graph_from_ssal
+
+
+SSAL = """
+A:
+  B {1.0, Road AB, 2w}
+  C {5.0, Road AC, 1w}
+B:
+  C {1.0, Road BC, 2w}
+  D {4.0, Road BD, 1w}
+C:
+  D {1.0, Road CD, 1w}
+D:
+E:
+""".strip()
+
+
+@pytest.fixture
+def graph():
+    return build_graph_from_ssal(SSAL)
 
 
 # ---------------------------------------------------------------------------
@@ -429,3 +454,228 @@ def test_extract_declared_length_allows_negative_length_for_later_validation():
     }
 
     assert extract_declared_length(route_json) == -1.0
+
+
+# ---------------------------------------------------------------------------
+# Candidate path validation
+# ---------------------------------------------------------------------------
+
+
+def test_validate_candidate_path_accepts_valid_shortest_path(graph):
+    """A valid path should pass when all nodes and directed edges exist."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["A", "B", "C", "D"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result == {
+        "valid": True,
+        "errors": [],
+        "unknown_nodes": [],
+        "missing_edges": [],
+        "computed_length": 3.0,
+    }
+
+
+def test_validate_candidate_path_accepts_valid_but_non_shortest_path(graph):
+    """Validation checks path legality, not whether the path is shortest."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["A", "B", "D"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result == {
+        "valid": True,
+        "errors": [],
+        "unknown_nodes": [],
+        "missing_edges": [],
+        "computed_length": 5.0,
+    }
+
+
+def test_validate_candidate_path_rejects_empty_path(graph):
+    """An empty candidate route gives no usable route to evaluate."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=[],
+        origin="A",
+        destination="D",
+    )
+
+    assert result["valid"] is False
+    assert result["errors"] == ["empty_path"]
+    assert result["unknown_nodes"] == []
+    assert result["missing_edges"] == []
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_rejects_wrong_origin(graph):
+    """The candidate path must start at the requested origin."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["B", "C", "D"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result["valid"] is False
+    assert "wrong_origin" in result["errors"]
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_rejects_wrong_destination(graph):
+    """The candidate path must end at the requested destination."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["A", "B", "C"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result["valid"] is False
+    assert "wrong_destination" in result["errors"]
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_reports_both_wrong_origin_and_destination(graph):
+    """Origin and destination errors should both be reported when both apply."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["B", "C"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result["valid"] is False
+    assert "wrong_origin" in result["errors"]
+    assert "wrong_destination" in result["errors"]
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_rejects_unknown_nodes(graph):
+    """Unknown nodes should be reported explicitly."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["A", "UNKNOWN", "D"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result["valid"] is False
+    assert "unknown_nodes" in result["errors"]
+    assert result["unknown_nodes"] == ["UNKNOWN"]
+    assert result["missing_edges"] == []
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_reports_multiple_unknown_nodes(graph):
+    """All unknown nodes should be listed to make debugging easier."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["A", "UNKNOWN_1", "UNKNOWN_2", "D"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result["valid"] is False
+    assert "unknown_nodes" in result["errors"]
+    assert result["unknown_nodes"] == ["UNKNOWN_1", "UNKNOWN_2"]
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_reports_missing_directed_edge(graph):
+    """A path can use known nodes but still be invalid because an edge is missing."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["A", "D"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result["valid"] is False
+    assert "missing_edges" in result["errors"]
+    assert result["unknown_nodes"] == []
+    assert result["missing_edges"] == [["A", "D"]]
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_reports_multiple_missing_directed_edges(graph):
+    """All missing directed edges should be reported."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["D", "C", "A"],
+        origin="D",
+        destination="A",
+    )
+
+    assert result["valid"] is False
+    assert "missing_edges" in result["errors"]
+    assert result["missing_edges"] == [["D", "C"], ["C", "A"]]
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_does_not_infer_reverse_edges(graph):
+    """Reverse traversal should fail unless the directed edge exists in the graph."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["D", "C", "B", "A"],
+        origin="D",
+        destination="A",
+    )
+
+    assert result["valid"] is False
+    assert "missing_edges" in result["errors"]
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_skips_edge_checks_when_unknown_nodes_exist(graph):
+    """Unknown-node errors are more useful than derived missing-edge noise."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["A", "UNKNOWN", "D"],
+        origin="A",
+        destination="D",
+    )
+
+    assert result["valid"] is False
+    assert "unknown_nodes" in result["errors"]
+    assert "missing_edges" not in result["errors"]
+    assert result["missing_edges"] == []
+    assert result["computed_length"] is None
+
+
+def test_validate_candidate_path_accepts_origin_equals_destination(graph):
+    """A single-node route is valid when origin and destination are the same."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["A"],
+        origin="A",
+        destination="A",
+    )
+
+    assert result == {
+        "valid": True,
+        "errors": [],
+        "unknown_nodes": [],
+        "missing_edges": [],
+        "computed_length": 0.0,
+    }
+
+
+def test_validate_candidate_path_rejects_unknown_single_node_origin_destination(graph):
+    """A single-node path still needs to refer to a known graph node."""
+    result = validate_candidate_path(
+        graph=graph,
+        path=["UNKNOWN"],
+        origin="UNKNOWN",
+        destination="UNKNOWN",
+    )
+
+    assert result["valid"] is False
+    assert result["errors"] == ["unknown_nodes"]
+    assert result["unknown_nodes"] == ["UNKNOWN"]
+    assert result["computed_length"] is None
