@@ -1,8 +1,8 @@
-"""Tests for route-output parsing and evaluation utilities.
+"""Tests for route-output parsing and graph-native evaluation utilities.
 
-This module starts with JSON extraction tests for ``clean_json``. Later tests
-should cover path extraction, candidate validation, route comparison metrics,
-and top-level route-response evaluation.
+This module covers JSON recovery, route path extraction, declared length
+parsing, candidate path validation, route comparison metrics, declared-vs-
+computed length metrics, and top-level route-response evaluation.
 """
 
 import pytest
@@ -12,8 +12,10 @@ from research.evaluation import (
     compare_declared_length,
     compare_routes,
     edge_set,
+    evaluate_route_response,
     extract_declared_length,
     extract_path,
+    extract_route_entries,
     overlap_ratio,
     validate_candidate_path,
 )
@@ -221,6 +223,83 @@ def test_extract_path_ignores_edge_name_for_path_validity():
     }
 
     assert extract_path(route_json) == ["A", "B", "D"]
+
+
+def test_extract_path_preserves_edge_names_for_debugging():
+    """edge_name should be available for display/debugging even though it
+    does not affect path validity."""
+    route_json = {
+        "route": [
+            {"node": "A", "edge_name": "start"},
+            {"node": "B", "edge_name": "Road AB"},
+            {"node": "C", "edge_name": "Road BC"},
+            {"node": "D", "edge_name": "Road CD"},
+        ]
+    }
+
+    entries = extract_route_entries(route_json)
+
+    assert [e["node"] for e in entries] == ["A", "B", "C", "D"]
+
+    assert [e["edge_name"] for e in entries] == [
+        "start",
+        "Road AB",
+        "Road BC",
+        "Road CD",
+    ]
+
+
+def test_extract_route_entries_returns_none_for_missing_edge_name():
+    """Entries without edge_name should preserve the key as None."""
+    route_json = {
+        "route": [
+            {"node": "A"},
+            {"node": "B", "edge_name": "Road AB"},
+        ]
+    }
+
+    entries = extract_route_entries(route_json)
+
+    assert entries == [
+        {"node": "A", "edge_name": None},
+        {"node": "B", "edge_name": "Road AB"},
+    ]
+
+
+def test_extract_route_entries_skips_entries_without_node():
+    """Entries without a recognized node key should be skipped."""
+    route_json = {
+        "route": [
+            {"node": "A", "edge_name": "start"},
+            {"edge_name": "orphaned"},
+            {"node": "B", "edge_name": "Road AB"},
+        ]
+    }
+
+    entries = extract_route_entries(route_json)
+
+    assert [e["node"] for e in entries] == ["A", "B"]
+
+
+def test_extract_route_entries_skips_non_dict_entries():
+    """Non-dict route entries should be skipped silently."""
+    route_json = {
+        "route": [
+            {"node": "A", "edge_name": "start"},
+            "B",
+            42,
+            {"node": "D", "edge_name": "Road CD"},
+        ]
+    }
+
+    entries = extract_route_entries(route_json)
+
+    assert [e["node"] for e in entries] == ["A", "D"]
+
+
+def test_extract_route_entries_returns_empty_list_when_route_missing():
+    """Missing route key should produce an empty entries list."""
+    assert extract_route_entries({}) == []
 
 
 def test_extract_path_converts_node_ids_to_strings():
@@ -813,6 +892,19 @@ def test_compare_routes_edge_overlap_is_direction_sensitive():
     assert result["exact_path_match"] is False
 
 
+def test_compare_routes_length_errors_when_ground_truth_length_is_zero():
+    """Absolute error is still valid at zero; only relative avoids division."""
+    result = compare_routes(
+        candidate_path=["A"],
+        ground_truth_path=["A"],
+        candidate_length=0.0,
+        ground_truth_length=0.0,
+    )
+
+    assert result["absolute_length_error"] == 0.0
+    assert result["relative_length_error"] is None
+
+
 def test_compare_routes_length_errors_are_none_when_candidate_length_missing():
     """Candidate-vs-ground-truth length errors need candidate length."""
     result = compare_routes(
@@ -839,19 +931,6 @@ def test_compare_routes_length_errors_are_none_when_ground_truth_length_missing(
     assert result["relative_length_error"] is None
 
 
-def test_compare_routes_length_errors_are_none_when_ground_truth_length_is_zero():
-    """Relative length error should avoid division by zero."""
-    result = compare_routes(
-        candidate_path=["A"],
-        ground_truth_path=["A"],
-        candidate_length=0.0,
-        ground_truth_length=0.0,
-    )
-
-    assert result["absolute_length_error"] is None
-    assert result["relative_length_error"] is None
-
-
 def test_compare_routes_empty_ground_truth_has_zero_overlap():
     """Empty ground truth should not crash overlap calculations."""
     result = compare_routes(
@@ -864,6 +943,33 @@ def test_compare_routes_empty_ground_truth_has_zero_overlap():
     assert result["exact_path_match"] is False
     assert result["node_overlap"] == 0.0
     assert result["edge_overlap"] == 0.0
+
+
+def test_compare_routes_both_empty_paths():
+    """Two empty paths are an exact match with zero overlap."""
+    result = compare_routes(
+        candidate_path=[],
+        ground_truth_path=[],
+        candidate_length=None,
+        ground_truth_length=None,
+    )
+
+    assert result["exact_path_match"] is True
+    assert result["node_overlap"] == 0.0
+    assert result["edge_overlap"] == 0.0
+
+
+def test_compare_routes_absolute_error_computed_when_ground_truth_length_is_zero():
+    """Candidate has length, ground truth is zero: absolute is valid, relative is None."""
+    result = compare_routes(
+        candidate_path=["A", "B"],
+        ground_truth_path=["A"],
+        candidate_length=5.0,
+        ground_truth_length=0.0,
+    )
+
+    assert result["absolute_length_error"] == 5.0
+    assert result["relative_length_error"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -921,7 +1027,7 @@ def test_compare_declared_length_errors_are_none_when_computed_length_missing():
     }
 
 
-def test_compare_declared_length_errors_are_none_when_computed_length_is_zero():
+def test_compare_declared_length_errors_when_computed_length_is_zero():
     """Relative declared-length error should avoid division by zero."""
     result = compare_declared_length(
         declared_length=1.0,
@@ -929,7 +1035,7 @@ def test_compare_declared_length_errors_are_none_when_computed_length_is_zero():
     )
 
     assert result == {
-        "declared_length_absolute_error": None,
+        "declared_length_absolute_error": 1.0,
         "declared_length_relative_error": None,
     }
 
@@ -943,3 +1049,478 @@ def test_compare_declared_length_uses_absolute_difference():
 
     assert result["declared_length_absolute_error"] == 0.5
     assert result["declared_length_relative_error"] == pytest.approx(0.5 / 3.0)
+
+
+def test_compare_declared_length_both_zero():
+    """Both zero: absolute error is zero, relative is None (zero division)."""
+    result = compare_declared_length(
+        declared_length=0.0,
+        computed_length=0.0,
+    )
+
+    assert result == {
+        "declared_length_absolute_error": 0.0,
+        "declared_length_relative_error": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Top-level route response evaluation
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_route_response_valid_exact_route(graph):
+    """A valid shortest route should evaluate successfully with exact match."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 3.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "C", "edge_name": "Road BC"},
+    {"node": "D", "edge_name": "Road CD"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_json"] is True
+    assert result["valid_path"] is True
+    assert result["candidate_path"] == ["A", "B", "C", "D"]
+    assert result["candidate_declared_length"] == 3.0
+    assert result["candidate_computed_length"] == 3.0
+    assert result["candidate_validation"]["valid"] is True
+    assert result["ground_truth_path"] == ["A", "B", "C", "D"]
+    assert result["ground_truth_length"] == 3.0
+    assert result["exact_path_match"] is True
+    assert result["node_overlap"] == 1.0
+    assert result["edge_overlap"] == 1.0
+    assert result["absolute_length_error"] == 0.0
+    assert result["relative_length_error"] == 0.0
+    assert result["declared_length_absolute_error"] == 0.0
+    assert result["declared_length_relative_error"] == 0.0
+
+
+def test_evaluate_route_response_valid_but_non_shortest_route(graph):
+    """A valid route may still be longer than the Dijkstra ground truth."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 5.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "D", "edge_name": "Road BD"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_json"] is True
+    assert result["valid_path"] is True
+    assert result["candidate_path"] == ["A", "B", "D"]
+    assert result["candidate_declared_length"] == 5.0
+    assert result["candidate_computed_length"] == 5.0
+    assert result["ground_truth_path"] == ["A", "B", "C", "D"]
+    assert result["ground_truth_length"] == 3.0
+    assert result["exact_path_match"] is False
+    assert result["node_overlap"] == pytest.approx(3 / 4)
+    assert result["edge_overlap"] == pytest.approx(1 / 3)
+    assert result["absolute_length_error"] == 2.0
+    assert result["relative_length_error"] == pytest.approx(2 / 3)
+    assert result["declared_length_absolute_error"] == 0.0
+    assert result["declared_length_relative_error"] == 0.0
+
+
+def test_evaluate_route_response_valid_route_with_wrong_declared_length(graph):
+    """Declared length error should be separate from route optimality error."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 999.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "C", "edge_name": "Road BC"},
+    {"node": "D", "edge_name": "Road CD"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_path"] is True
+    assert result["exact_path_match"] is True
+    assert result["candidate_declared_length"] == 999.0
+    assert result["candidate_computed_length"] == 3.0
+    assert result["ground_truth_length"] == 3.0
+    assert result["absolute_length_error"] == 0.0
+    assert result["relative_length_error"] == 0.0
+    assert result["declared_length_absolute_error"] == 996.0
+    assert result["declared_length_relative_error"] == pytest.approx(996.0 / 3.0)
+
+
+def test_evaluate_route_response_invalid_json(graph):
+    """Invalid JSON should return a structured skipped result."""
+    result = evaluate_route_response("{not valid json}", graph, "A", "D")
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "invalid_json"
+    assert result["valid_json"] is False
+    assert result["valid_path"] is False
+    assert "error" in result
+
+
+def test_evaluate_route_response_no_json(graph):
+    """Responses without JSON should return a structured skipped result."""
+    result = evaluate_route_response("No route found.", graph, "A", "D")
+
+    assert result == {
+        "status": "skipped",
+        "reason": "no_json_found",
+        "valid_json": False,
+        "valid_path": False,
+    }
+
+
+def test_evaluate_route_response_json_array_is_not_valid_route_object(graph):
+    """The extracted JSON must be an object, not another JSON type."""
+    result = evaluate_route_response("[1, 2, 3]", graph, "A", "D")
+
+    # Current clean_json extracts only object-shaped JSON, so this becomes no JSON.
+    assert result["status"] == "skipped"
+    assert result["reason"] == "no_json_found"
+    assert result["valid_json"] is False
+    assert result["valid_path"] is False
+
+
+def test_evaluate_route_response_unknown_candidate_node(graph):
+    """Unknown candidate nodes should make the path invalid without crashing."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 10.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "UNKNOWN", "edge_name": "unknown"},
+    {"node": "D", "edge_name": "unknown"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_json"] is True
+    assert result["valid_path"] is False
+    assert result["candidate_path"] == ["A", "UNKNOWN", "D"]
+    assert result["candidate_computed_length"] is None
+    assert "unknown_nodes" in result["candidate_validation"]["errors"]
+    assert result["candidate_validation"]["unknown_nodes"] == ["UNKNOWN"]
+    assert result["candidate_validation"]["computed_length"] is None
+
+
+def test_evaluate_route_response_missing_edge(graph):
+    """Known nodes with missing directed edges should be reported as invalid."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 5.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "D", "edge_name": "missing"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_path"] is False
+    assert result["candidate_path"] == ["A", "D"]
+    assert result["candidate_computed_length"] is None
+    assert "missing_edges" in result["candidate_validation"]["errors"]
+    assert result["candidate_validation"]["missing_edges"] == [["A", "D"]]
+
+
+def test_evaluate_route_response_wrong_origin(graph):
+    """The candidate path must start at the requested origin."""
+    response = """
+{
+  "origin": "B",
+  "destination": "D",
+  "total_length": 2.0,
+  "route": [
+    {"node": "B", "edge_name": "start"},
+    {"node": "C", "edge_name": "Road BC"},
+    {"node": "D", "edge_name": "Road CD"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_path"] is False
+    assert result["candidate_path"] == ["B", "C", "D"]
+    assert "wrong_origin" in result["candidate_validation"]["errors"]
+    assert result["candidate_computed_length"] is None
+
+
+def test_evaluate_route_response_wrong_destination(graph):
+    """The candidate path must end at the requested destination."""
+    response = """
+{
+  "origin": "A",
+  "destination": "C",
+  "total_length": 2.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "C", "edge_name": "Road BC"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_path"] is False
+    assert result["candidate_path"] == ["A", "B", "C"]
+    assert "wrong_destination" in result["candidate_validation"]["errors"]
+    assert result["candidate_computed_length"] is None
+
+
+def test_evaluate_route_response_empty_path(graph):
+    """An empty route array should produce an invalid candidate path."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 0,
+  "route": [],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_path"] is False
+    assert result["candidate_path"] == []
+    assert "empty_path" in result["candidate_validation"]["errors"]
+    assert result["candidate_computed_length"] is None
+
+
+def test_evaluate_route_response_missing_declared_length(graph):
+    """Evaluation should still work when the model omits total_length."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "C", "edge_name": "Road BC"},
+    {"node": "D", "edge_name": "Road CD"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_path"] is True
+    assert result["candidate_declared_length"] is None
+    assert result["candidate_computed_length"] == 3.0
+    assert result["declared_length_absolute_error"] is None
+    assert result["declared_length_relative_error"] is None
+
+
+def test_evaluate_route_response_uses_fenced_json(graph):
+    """Top-level evaluation should work with fenced JSON responses too."""
+    response = """
+```json
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 3.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "C", "edge_name": "Road BC"},
+    {"node": "D", "edge_name": "Road CD"}
+  ],
+  "status": "success"
+}
+```
+""".strip()
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_json"] is True
+    assert result["valid_path"] is True
+    assert result["exact_path_match"] is True
+
+
+def test_evaluate_route_response_uses_dijkstra_ground_truth_from_graph(graph):
+    """Ground truth should come from Dijkstra, not from the model response."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 5.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "D", "edge_name": "Road BD"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["candidate_path"] == ["A", "B", "D"]
+    assert result["candidate_computed_length"] == 5.0
+    assert result["ground_truth_path"] == ["A", "B", "C", "D"]
+    assert result["ground_truth_length"] == 3.0
+
+
+def test_evaluate_route_response_handles_ground_truth_failure(graph):
+    """If Dijkstra cannot produce ground truth, evaluation should be skipped."""
+    response = """
+{
+  "origin": "A",
+  "destination": "E",
+  "total_length": 1.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "E", "edge_name": "missing"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "E")
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "ground_truth_failed"
+    assert result["valid_json"] is True
+    assert result["valid_path"] is False
+    assert result["candidate_path"] == ["A", "E"]
+    assert result["candidate_declared_length"] == 1.0
+    assert result["ground_truth"]["ok"] is False
+    assert result["ground_truth"]["reason"] == "no_path"
+
+
+def test_evaluate_route_response_invalid_path_has_none_declared_length_errors(graph):
+    """Invalid paths have no computed length, so declared-length errors are None."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 10.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "D", "edge_name": "missing"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["status"] == "evaluated"
+    assert result["valid_path"] is False
+    assert result["candidate_declared_length"] == 10.0
+    assert result["candidate_computed_length"] is None
+    assert result["declared_length_absolute_error"] is None
+    assert result["declared_length_relative_error"] is None
+
+
+def test_evaluate_route_response_invalid_path_still_reports_route_comparison(graph):
+    """Invalid paths still get compared against ground truth for overlap metrics."""
+    response = """
+{
+  "origin": "A",
+  "destination": "D",
+  "total_length": 10.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "D", "edge_name": "missing"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "D")
+
+    assert result["exact_path_match"] is False
+    assert result["node_overlap"] == pytest.approx(2 / 4)
+    assert result["absolute_length_error"] is None
+    assert result["relative_length_error"] is None
+
+
+def test_evaluate_route_response_ground_truth_unknown_origin(graph):
+    """Unknown origin in graph should produce ground-truth failure."""
+    response = """
+{
+  "origin": "Z",
+  "destination": "D",
+  "total_length": 1.0,
+  "route": [
+    {"node": "Z", "edge_name": "start"},
+    {"node": "D", "edge_name": "unknown"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "Z", "D")
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "ground_truth_failed"
+    assert result["ground_truth"]["reason"] == "unknown_origin"
+
+
+def test_evaluate_route_response_ground_truth_unknown_destination(graph):
+    """Unknown destination in graph should produce ground-truth failure."""
+    response = """
+{
+  "origin": "A",
+  "destination": "Z",
+  "total_length": 1.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "Z", "edge_name": "unknown"}
+  ],
+  "status": "success"
+}
+"""
+
+    result = evaluate_route_response(response, graph, "A", "Z")
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "ground_truth_failed"
+    assert result["ground_truth"]["reason"] == "unknown_destination"
