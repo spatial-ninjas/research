@@ -1,0 +1,13 @@
+[project]
+name = "spatial-ninjas-research"
+version = "0.1.0"
+description = "Reusable SSAL, graph, and route-evaluation utilities for Spatial Ninjas"
+requires-python = ">=3.11"
+dependencies = [
+    "geopandas>=0.14.0",
+    "numpy>=1.26.0",
+    "python-dotenv>=1.0.0"
+]
+
+[tool.setuptools.packages.find]
+include = ["research*"]
