@@ -9,8 +9,12 @@ import pytest
 
 from research.evaluation import (
     clean_json,
+    compare_declared_length,
+    compare_routes,
+    edge_set,
     extract_declared_length,
     extract_path,
+    overlap_ratio,
     validate_candidate_path,
 )
 from research.graph import build_graph_from_ssal
@@ -679,3 +683,263 @@ def test_validate_candidate_path_rejects_unknown_single_node_origin_destination(
     assert result["errors"] == ["unknown_nodes"]
     assert result["unknown_nodes"] == ["UNKNOWN"]
     assert result["computed_length"] is None
+
+
+# ---------------------------------------------------------------------------
+# Route comparison metrics
+# ---------------------------------------------------------------------------
+
+
+def test_edge_set_returns_directed_edges_from_path():
+    """A node path should become directed consecutive edge pairs."""
+    assert edge_set(["A", "B", "C", "D"]) == {
+        ("A", "B"),
+        ("B", "C"),
+        ("C", "D"),
+    }
+
+
+def test_edge_set_returns_empty_set_for_single_node_path():
+    """A single-node path has no directed edges."""
+    assert edge_set(["A"]) == set()
+
+
+def test_edge_set_returns_empty_set_for_empty_path():
+    """An empty path has no directed edges."""
+    assert edge_set([]) == set()
+
+
+def test_overlap_ratio_returns_fraction_of_reference_covered_by_candidate():
+    """Overlap ratio should be measured against the reference set."""
+    candidate = {"A", "B"}
+    reference = {"A", "B", "C", "D"}
+
+    assert overlap_ratio(candidate, reference) == pytest.approx(0.5)
+
+
+def test_overlap_ratio_returns_zero_when_reference_is_empty():
+    """An empty reference set avoids division by zero and returns zero."""
+    assert overlap_ratio({"A"}, set()) == 0.0
+
+
+def test_overlap_ratio_returns_zero_when_candidate_has_no_overlap():
+    """No shared items should produce zero overlap."""
+    assert overlap_ratio({"X", "Y"}, {"A", "B"}) == 0.0
+
+
+def test_compare_routes_exact_match_has_full_overlap_and_zero_length_error():
+    """Identical candidate and ground-truth routes should match exactly."""
+    result = compare_routes(
+        candidate_path=["A", "B", "C", "D"],
+        ground_truth_path=["A", "B", "C", "D"],
+        candidate_length=3.0,
+        ground_truth_length=3.0,
+    )
+
+    assert result == {
+        "exact_path_match": True,
+        "node_overlap": 1.0,
+        "edge_overlap": 1.0,
+        "absolute_length_error": 0.0,
+        "relative_length_error": 0.0,
+    }
+
+
+def test_compare_routes_valid_but_non_shortest_route():
+    """A valid route can differ from Dijkstra and have a positive length error."""
+    result = compare_routes(
+        candidate_path=["A", "B", "D"],
+        ground_truth_path=["A", "B", "C", "D"],
+        candidate_length=5.0,
+        ground_truth_length=3.0,
+    )
+
+    assert result["exact_path_match"] is False
+    assert result["node_overlap"] == pytest.approx(3 / 4)
+    assert result["edge_overlap"] == pytest.approx(1 / 3)
+    assert result["absolute_length_error"] == 2.0
+    assert result["relative_length_error"] == pytest.approx(2 / 3)
+
+
+def test_compare_routes_different_route_with_same_length():
+    """Equal route length does not imply exact path match."""
+    result = compare_routes(
+        candidate_path=["A", "C", "D"],
+        ground_truth_path=["A", "B", "D"],
+        candidate_length=2.0,
+        ground_truth_length=2.0,
+    )
+
+    assert result["exact_path_match"] is False
+    assert result["absolute_length_error"] == 0.0
+    assert result["relative_length_error"] == 0.0
+
+
+def test_compare_routes_node_overlap_uses_ground_truth_node_set_as_reference():
+    """Node overlap should ask how much of the ground-truth route was covered."""
+    result = compare_routes(
+        candidate_path=["A", "B", "X", "Y"],
+        ground_truth_path=["A", "B", "C", "D"],
+        candidate_length=10.0,
+        ground_truth_length=3.0,
+    )
+
+    assert result["node_overlap"] == pytest.approx(2 / 4)
+
+
+def test_compare_routes_edge_overlap_uses_ground_truth_directed_edges_as_reference():
+    """Edge overlap should be based on directed edge pairs, not just nodes."""
+    result = compare_routes(
+        candidate_path=["A", "B", "D"],
+        ground_truth_path=["A", "B", "C", "D"],
+        candidate_length=5.0,
+        ground_truth_length=3.0,
+    )
+
+    assert result["edge_overlap"] == pytest.approx(1 / 3)
+
+
+def test_compare_routes_edge_overlap_is_direction_sensitive():
+    """Reversed edges should not count as overlap."""
+    result = compare_routes(
+        candidate_path=["D", "C", "B", "A"],
+        ground_truth_path=["A", "B", "C", "D"],
+        candidate_length=3.0,
+        ground_truth_length=3.0,
+    )
+
+    assert result["node_overlap"] == 1.0
+    assert result["edge_overlap"] == 0.0
+    assert result["exact_path_match"] is False
+
+
+def test_compare_routes_length_errors_are_none_when_candidate_length_missing():
+    """Candidate-vs-ground-truth length errors need candidate length."""
+    result = compare_routes(
+        candidate_path=["A", "B", "D"],
+        ground_truth_path=["A", "B", "C", "D"],
+        candidate_length=None,
+        ground_truth_length=3.0,
+    )
+
+    assert result["absolute_length_error"] is None
+    assert result["relative_length_error"] is None
+
+
+def test_compare_routes_length_errors_are_none_when_ground_truth_length_missing():
+    """Candidate-vs-ground-truth length errors need ground-truth length."""
+    result = compare_routes(
+        candidate_path=["A", "B", "D"],
+        ground_truth_path=["A", "B", "C", "D"],
+        candidate_length=5.0,
+        ground_truth_length=None,
+    )
+
+    assert result["absolute_length_error"] is None
+    assert result["relative_length_error"] is None
+
+
+def test_compare_routes_length_errors_are_none_when_ground_truth_length_is_zero():
+    """Relative length error should avoid division by zero."""
+    result = compare_routes(
+        candidate_path=["A"],
+        ground_truth_path=["A"],
+        candidate_length=0.0,
+        ground_truth_length=0.0,
+    )
+
+    assert result["absolute_length_error"] is None
+    assert result["relative_length_error"] is None
+
+
+def test_compare_routes_empty_ground_truth_has_zero_overlap():
+    """Empty ground truth should not crash overlap calculations."""
+    result = compare_routes(
+        candidate_path=["A", "B"],
+        ground_truth_path=[],
+        candidate_length=1.0,
+        ground_truth_length=None,
+    )
+
+    assert result["exact_path_match"] is False
+    assert result["node_overlap"] == 0.0
+    assert result["edge_overlap"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Declared-vs-computed length metrics
+# ---------------------------------------------------------------------------
+
+
+def test_compare_declared_length_computes_absolute_and_relative_error():
+    """Declared-vs-computed metrics measure model distance calculation error."""
+    result = compare_declared_length(
+        declared_length=3.5,
+        computed_length=3.0,
+    )
+
+    assert result["declared_length_absolute_error"] == 0.5
+    assert result["declared_length_relative_error"] == pytest.approx(0.5 / 3.0)
+
+
+def test_compare_declared_length_returns_zero_error_for_exact_match():
+    """Exact declared/computed length agreement should have zero error."""
+    result = compare_declared_length(
+        declared_length=3.0,
+        computed_length=3.0,
+    )
+
+    assert result == {
+        "declared_length_absolute_error": 0.0,
+        "declared_length_relative_error": 0.0,
+    }
+
+
+def test_compare_declared_length_errors_are_none_when_declared_length_missing():
+    """Declared-vs-computed metrics need the model-declared length."""
+    result = compare_declared_length(
+        declared_length=None,
+        computed_length=3.0,
+    )
+
+    assert result == {
+        "declared_length_absolute_error": None,
+        "declared_length_relative_error": None,
+    }
+
+
+def test_compare_declared_length_errors_are_none_when_computed_length_missing():
+    """Declared-vs-computed metrics need the graph-computed candidate length."""
+    result = compare_declared_length(
+        declared_length=3.5,
+        computed_length=None,
+    )
+
+    assert result == {
+        "declared_length_absolute_error": None,
+        "declared_length_relative_error": None,
+    }
+
+
+def test_compare_declared_length_errors_are_none_when_computed_length_is_zero():
+    """Relative declared-length error should avoid division by zero."""
+    result = compare_declared_length(
+        declared_length=1.0,
+        computed_length=0.0,
+    )
+
+    assert result == {
+        "declared_length_absolute_error": None,
+        "declared_length_relative_error": None,
+    }
+
+
+def test_compare_declared_length_uses_absolute_difference():
+    """Declared length can be smaller or larger than computed length."""
+    result = compare_declared_length(
+        declared_length=2.5,
+        computed_length=3.0,
+    )
+
+    assert result["declared_length_absolute_error"] == 0.5
+    assert result["declared_length_relative_error"] == pytest.approx(0.5 / 3.0)
