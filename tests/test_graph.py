@@ -15,8 +15,8 @@ dijkstra_shortest_path is implemented.
 """
 
 import dataclasses
-
 import pytest
+from pathlib import Path
 
 from research.graph import (
     Edge,
@@ -800,3 +800,129 @@ D:
     assert result["ok"] is True
     assert result["total_length"] == 2.0
     assert result["path"] == ["A", "B", "D"]
+
+
+# ---------------------------------------------------------------------------
+# Optional real SSAL artifact integration test
+# ---------------------------------------------------------------------------
+
+
+def _find_real_ssal_artifact() -> Path | None:
+    """Return a versioned SSAL artifact if one exists in the repository.
+
+    The exact generated filename may change over time, so the integration test
+    looks for any .txt file under data/derived/ssal/ instead of hard-coding
+    one path.
+    """
+    ssal_dir = Path("data/derived/ssal")
+
+    if not ssal_dir.exists():
+        return None
+
+    candidates = sorted(ssal_dir.glob("*.txt"))
+    if not candidates:
+        return None
+
+    return candidates[0]
+
+
+@pytest.mark.integration
+def test_build_graph_from_real_ssal_artifact():
+    """Real versioned SSAL artifacts should be parseable into a graph.
+
+    This is intentionally a lightweight smoke test. The core correctness tests
+    use small in-memory SSAL fixtures so they are stable and easy to debug.
+    """
+    ssal_path = _find_real_ssal_artifact()
+
+    if ssal_path is None:
+        pytest.skip("No versioned SSAL artifact found under data/derived/ssal/")
+
+    ssal_text = ssal_path.read_text(encoding="utf-8")
+    graph = build_graph_from_ssal(ssal_text)
+
+    assert len(graph.nodes()) > 0
+
+    edge_count = sum(len(edges) for edges in graph.adjacency.values())
+    assert edge_count > 0
+
+
+@pytest.mark.integration
+def test_dijkstra_on_real_ssal_artifact_with_known_nodes_if_available():
+    """Run Dijkstra on known real nodes when they exist in the artifact.
+
+    The known nodes come from the small SSAL subset used in visualization
+    examples. If the artifact changes and no longer contains these nodes, this
+    test skips instead of failing.
+    """
+    ssal_path = _find_real_ssal_artifact()
+
+    if ssal_path is None:
+        pytest.skip("No versioned SSAL artifact found under data/derived/ssal/")
+
+    ssal_text = ssal_path.read_text(encoding="utf-8")
+    graph = build_graph_from_ssal(ssal_text)
+
+    origin = "1011021999"
+    destination = "250658336"
+
+    if not graph.has_node(origin) or not graph.has_node(destination):
+        pytest.skip(
+            f"Known test nodes not found in {ssal_path}: "
+            f"{origin} -> {destination}"
+        )
+
+    result = dijkstra_shortest_path(graph, origin, destination)
+
+    assert result["ok"] is True
+    assert result["origin"] == origin
+    assert result["destination"] == destination
+    assert result["path"][0] == origin
+    assert result["path"][-1] == destination
+    assert result["total_length"] >= 0.0
+
+
+@pytest.mark.integration
+def test_dijkstra_on_real_ssal_artifact_returns_known_shortest_path():
+    """Dijkstra should reproduce a known shortest path from the versioned SSAL.
+
+    This test intentionally uses a small known route from the real artifact. If
+    the artifact changes and these nodes/edges no longer exist, the test skips
+    instead of failing.
+    """
+    ssal_path = _find_real_ssal_artifact()
+
+    if ssal_path is None:
+        pytest.skip("No versioned SSAL artifact found under data/derived/ssal/")
+
+    ssal_text = ssal_path.read_text(encoding="utf-8")
+    graph = build_graph_from_ssal(ssal_text)
+
+    expected_path = [
+        "1011021999",
+        "1011022077",
+        "1011022138",
+        "250658336",
+    ]
+    expected_length = 66.0
+
+    if any(not graph.has_node(node) for node in expected_path):
+        pytest.skip(f"Known test path nodes not found in {ssal_path}")
+
+    if any(
+        graph.get_edge(source, target) is None
+        for source, target in zip(expected_path, expected_path[1:])
+    ):
+        pytest.skip(f"Known test path edges not found in {ssal_path}")
+
+    result = dijkstra_shortest_path(
+        graph,
+        expected_path[0],
+        expected_path[-1],
+    )
+
+    assert result["ok"] is True
+    assert result["origin"] == expected_path[0]
+    assert result["destination"] == expected_path[-1]
+    assert result["path"] == expected_path
+    assert result["total_length"] == pytest.approx(expected_length)
