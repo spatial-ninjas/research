@@ -7,7 +7,7 @@ and top-level route-response evaluation.
 
 import pytest
 
-from research.evaluation import clean_json
+from research.evaluation import clean_json, extract_path
 
 
 # ---------------------------------------------------------------------------
@@ -156,3 +156,174 @@ def test_clean_json_extracts_invalid_json_text_for_later_json_decode_error():
     text = "{not valid json}"
 
     assert clean_json(text) == "{not valid json}"
+
+
+# ---------------------------------------------------------------------------
+# Path extraction
+# ---------------------------------------------------------------------------
+
+
+def test_extract_path_from_primary_route_node_schema():
+    """The primary LLM contract uses route[*].node."""
+    route_json = {
+        "origin": "A",
+        "destination": "D",
+        "total_length": 3.0,
+        "route": [
+            {"node": "A", "edge_name": "start"},
+            {"node": "B", "edge_name": "Road AB"},
+            {"node": "C", "edge_name": "Road BC"},
+            {"node": "D", "edge_name": "Road CD"},
+        ],
+        "status": "success",
+    }
+
+    assert extract_path(route_json) == ["A", "B", "C", "D"]
+
+
+def test_extract_path_ignores_edge_name_for_path_validity():
+    """Only node IDs should define the path; edge_name is display/debug metadata."""
+    route_json = {
+        "route": [
+            {"node": "A", "edge_name": "wrong street name"},
+            {"node": "B", "edge_name": "also wrong"},
+            {"node": "D", "edge_name": "not used for validation"},
+        ]
+    }
+
+    assert extract_path(route_json) == ["A", "B", "D"]
+
+
+def test_extract_path_converts_node_ids_to_strings():
+    """Real SSAL node IDs are strings, so numeric-looking values should normalize."""
+    route_json = {
+        "route": [
+            {"node": 1011021999, "edge_name": "start"},
+            {"node": 1011022077, "edge_name": "Road"},
+            {"node": 250658336, "edge_name": "Road"},
+        ]
+    }
+
+    assert extract_path(route_json) == [
+        "1011021999",
+        "1011022077",
+        "250658336",
+    ]
+
+
+def test_extract_path_ignores_route_entries_without_node():
+    """Malformed route entries should be skipped instead of crashing extraction."""
+    route_json = {
+        "route": [
+            {"node": "A", "edge_name": "start"},
+            {"edge_name": "missing node"},
+            {"node": "B", "edge_name": "Road AB"},
+        ]
+    }
+
+    assert extract_path(route_json) == ["A", "B"]
+
+
+def test_extract_path_returns_empty_path_when_route_is_missing():
+    """Missing route means no candidate path was provided."""
+    assert extract_path({}) == []
+
+
+def test_extract_path_returns_empty_path_when_route_is_not_a_list():
+    """Non-list route values should not crash extraction."""
+    route_json = {
+        "route": {"node": "A"},
+    }
+
+    assert extract_path(route_json) == []
+
+
+def test_extract_path_falls_back_to_path_field_when_route_is_missing():
+    """Fallback path support is useful for older/manual outputs."""
+    route_json = {
+        "path": [
+            {"node": "A"},
+            {"node": "B"},
+            {"node": "D"},
+        ]
+    }
+
+    assert extract_path(route_json) == ["A", "B", "D"]
+
+
+def test_extract_path_prefers_route_over_fallback_path():
+    """The current prompt contract should take priority over legacy path."""
+    route_json = {
+        "route": [
+            {"node": "A"},
+            {"node": "B"},
+            {"node": "D"},
+        ],
+        "path": [
+            {"node": "A"},
+            {"node": "C"},
+            {"node": "D"},
+        ],
+    }
+
+    assert extract_path(route_json) == ["A", "B", "D"]
+
+
+def test_extract_path_supports_fallback_path_entries_as_strings():
+    """Fallback path may be a simple list of node IDs."""
+    route_json = {
+        "path": ["A", "B", "D"],
+    }
+
+    assert extract_path(route_json) == ["A", "B", "D"]
+
+
+def test_extract_path_supports_fallback_path_dict_node_id():
+    """Fallback dictionary entries may use node_id."""
+    route_json = {
+        "path": [
+            {"node_id": "A"},
+            {"node_id": "B"},
+            {"node_id": "D"},
+        ]
+    }
+
+    assert extract_path(route_json) == ["A", "B", "D"]
+
+
+def test_extract_path_supports_fallback_path_dict_id():
+    """Fallback dictionary entries may use id."""
+    route_json = {
+        "path": [
+            {"id": "A"},
+            {"id": "B"},
+            {"id": "D"},
+        ]
+    }
+
+    assert extract_path(route_json) == ["A", "B", "D"]
+
+
+def test_extract_path_ignores_unsupported_path_entries():
+    """Unsupported entries should be ignored instead of causing extraction failure."""
+    route_json = {
+        "route": [
+            {"node": "A"},
+            123,
+            None,
+            ["B"],
+            {"unknown": "C"},
+            {"node": "D"},
+        ]
+    }
+
+    assert extract_path(route_json) == ["A", "D"]
+
+
+def test_extract_path_allows_route_entries_as_strings_for_compatibility():
+    """String route entries are not the primary contract, but are safe to support."""
+    route_json = {
+        "route": ["A", "B", "D"],
+    }
+
+    assert extract_path(route_json) == ["A", "B", "D"]

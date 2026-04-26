@@ -44,3 +44,30 @@ def clean_json(text: str) -> str | None:
         return plain.group(0)
 
     return None
+
+
+def extract_path(route_json: dict[str, Any]) -> list[str]:
+    """Extract candidate node IDs from the expected route JSON contract.
+
+    The primary schema is route[*].node. Fallback handling exists only for
+    older/manual outputs and should not replace the prompt contract.
+    """
+    raw_route = route_json.get("route")
+
+    if raw_route is None:
+        raw_route = route_json.get("path") or []
+
+    path: list[str] = []
+
+    if not isinstance(raw_route, list):
+        return path
+
+    for item in raw_route:
+        if isinstance(item, dict):
+            node = item.get("node") or item.get("node_id") or item.get("id")
+            if node is not None:
+                path.append(str(node))
+        elif isinstance(item, str):
+            path.append(item)
+
+    return path
