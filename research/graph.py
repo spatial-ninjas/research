@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any
+
+
+_NODE_RE = re.compile(r"^(\S+):\s*$")
+_EDGE_RE = re.compile(r"^\s+(\S+)\s+\{(.*)\}\s*$")
 
 
 @dataclass(frozen=True)
@@ -47,6 +52,7 @@ class Graph:
 
         return total
 
+
 def parse_edge_attrs(raw_attrs: str) -> dict[str, Any]:
     parts = [part.strip() for part in raw_attrs.split(",")]
     attrs: dict[str, Any] = {}
@@ -78,3 +84,49 @@ def parse_edge_attrs(raw_attrs: str) -> dict[str, Any]:
 
     return attrs
 
+
+def build_graph_from_ssal(ssal_text: str) -> Graph:
+    adjacency: dict[str, list[Edge]] = {}
+    current_node: str | None = None
+
+    for line_number, line in enumerate(ssal_text.splitlines(), start=1):
+        if not line.strip():
+            continue
+
+        node_match = _NODE_RE.match(line)
+        if node_match:
+            current_node = node_match.group(1)
+            adjacency.setdefault(current_node, [])
+            continue
+
+        edge_match = _EDGE_RE.match(line)
+        if edge_match:
+            if current_node is None:
+                raise ValueError(
+                    f"Edge appears before any source node at line {line_number}: {line!r}"
+                )
+
+            target = edge_match.group(1)
+            attrs = parse_edge_attrs(edge_match.group(2))
+
+            if "length" not in attrs:
+                raise ValueError(
+                    f"Missing edge length at line {line_number}: {line!r}"
+                )
+
+            edge = Edge(
+                source=current_node,
+                target=target,
+                length=float(attrs["length"]),
+                name=attrs.get("name"),
+                direction=attrs.get("direction"),
+                attrs=attrs,
+            )
+
+            adjacency.setdefault(current_node, []).append(edge)
+            adjacency.setdefault(target, [])
+            continue
+
+        raise ValueError(f"Could not parse SSAL line {line_number}: {line!r}")
+
+    return Graph(adjacency=adjacency)

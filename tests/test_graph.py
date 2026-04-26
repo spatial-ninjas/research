@@ -1,4 +1,4 @@
-"""Tests for the SSAL graph data model and edge-attribute parser.
+"""Tests for SSAL graph utilities.
 
 This test module covers the lower-level graph utilities in research.graph:
 
@@ -8,17 +8,17 @@ This test module covers the lower-level graph utilities in research.graph:
 - path-length calculation
 - edge-attribute parsing from SSAL edge metadata strings, including generic
   key=value attributes
+- SSAL text parsing into a directed graph
 
-These tests do not cover full SSAL-to-graph parsing or Dijkstra yet. Those should
-be added in separate tests once build_graph_from_ssal and
-dijkstra_shortest_path are implemented.
+These tests do not cover Dijkstra yet. Dijkstra tests should be added once
+dijkstra_shortest_path is implemented.
 """
 
 import dataclasses
 
 import pytest
 
-from research.graph import Edge, Graph, parse_edge_attrs
+from research.graph import Edge, Graph, build_graph_from_ssal, parse_edge_attrs
 
 
 # ---------------------------------------------------------------------------
@@ -357,3 +357,216 @@ def test_parse_edge_attrs_allows_negative_length_for_later_validation():
     assert attrs["length"] == -1.0
     assert attrs["name"] == "Road"
     assert attrs["direction"] == "1w"
+
+
+# ---------------------------------------------------------------------------
+# SSAL-to-graph parsing
+# ---------------------------------------------------------------------------
+
+
+SIMPLE_SSAL = """
+A:
+  B {1.0, Alpha Street, 2w, from_x=24.1, from_y=60.1, to_x=24.2, to_y=60.2, surface=asphalt}
+  C {5.0, Gamma Street, 1w, from_x=24.1, from_y=60.1, to_x=24.5, to_y=60.5}
+B:
+  C {1.0, Beta Street, 2w, from_x=24.2, from_y=60.2, to_x=24.3, to_y=60.3}
+C:
+  D {2.0, Delta Street, 1w}
+D:
+E:
+  F {3.0, Echo Street, 1w}
+F:
+""".strip()
+
+
+def test_build_graph_from_ssal_parses_all_source_and_target_nodes():
+    """SSAL parser should create nodes from headers and edge targets."""
+    graph = build_graph_from_ssal(SIMPLE_SSAL)
+
+    assert graph.nodes() == ["A", "B", "C", "D", "E", "F"]
+
+    for node in ["A", "B", "C", "D", "E", "F"]:
+        assert graph.has_node(node)
+
+
+def test_build_graph_from_ssal_preserves_numeric_looking_node_ids_as_strings():
+    """Real SSAL node IDs are often numeric-looking, but should remain strings."""
+    ssal = """
+101:
+  202 {1.0, Road, 2w}
+202:
+""".strip()
+
+    graph = build_graph_from_ssal(ssal)
+
+    assert graph.has_node("101")
+    assert graph.has_node("202")
+    assert not graph.has_node(101)  # type: ignore[arg-type]
+
+
+def test_build_graph_from_ssal_parses_directed_edges():
+    """Every listed SSAL neighbor line should become a directed edge."""
+    graph = build_graph_from_ssal(SIMPLE_SSAL)
+
+    assert graph.has_edge("A", "B")
+    assert graph.has_edge("A", "C")
+    assert graph.has_edge("B", "C")
+    assert graph.has_edge("C", "D")
+    assert graph.has_edge("E", "F")
+
+
+def test_build_graph_from_ssal_does_not_infer_reverse_edges():
+    """Reverse edges should only exist if explicitly listed in the SSAL text."""
+    graph = build_graph_from_ssal(SIMPLE_SSAL)
+
+    assert not graph.has_edge("B", "A")
+    assert not graph.has_edge("C", "A")
+    assert not graph.has_edge("C", "B")
+    assert not graph.has_edge("D", "C")
+    assert not graph.has_edge("F", "E")
+
+
+def test_build_graph_from_ssal_preserves_edge_metadata():
+    """Parsed graph edges should preserve length, name, direction, and attrs."""
+    graph = build_graph_from_ssal(SIMPLE_SSAL)
+
+    edge = graph.get_edge("A", "B")
+
+    assert edge is not None
+    assert edge.source == "A"
+    assert edge.target == "B"
+    assert edge.length == 1.0
+    assert edge.name == "Alpha Street"
+    assert edge.direction == "2w"
+
+    assert edge.attrs == {
+        "length": 1.0,
+        "name": "Alpha Street",
+        "direction": "2w",
+        "from_x": 24.1,
+        "from_y": 60.1,
+        "to_x": 24.2,
+        "to_y": 60.2,
+        "surface": "asphalt",
+    }
+
+
+def test_build_graph_from_ssal_creates_target_only_node():
+    """A node that only appears as an edge target should still be created."""
+    ssal = """
+A:
+  B {1.0, Road, 1w}
+""".strip()
+
+    graph = build_graph_from_ssal(ssal)
+
+    assert graph.has_node("A")
+    assert graph.has_node("B")
+    assert graph.has_edge("A", "B")
+    assert graph.adjacency["B"] == []
+
+
+def test_build_graph_from_ssal_handles_empty_input():
+    """Empty SSAL input should produce an empty graph."""
+    graph = build_graph_from_ssal("")
+
+    assert graph.nodes() == []
+    assert graph.adjacency == {}
+
+
+def test_build_graph_from_ssal_ignores_blank_lines():
+    """Blank lines should not affect graph parsing."""
+    ssal = """
+
+A:
+
+  B {1.0, Road, 2w}
+
+B:
+
+""".strip("\n")
+
+    graph = build_graph_from_ssal(ssal)
+
+    assert graph.nodes() == ["A", "B"]
+    assert graph.has_edge("A", "B")
+
+
+def test_build_graph_from_ssal_allows_node_with_no_neighbors():
+    """A node header without edge lines should create an isolated node."""
+    ssal = """
+A:
+B:
+""".strip()
+
+    graph = build_graph_from_ssal(ssal)
+
+    assert graph.nodes() == ["A", "B"]
+    assert graph.adjacency["A"] == []
+    assert graph.adjacency["B"] == []
+
+
+def test_build_graph_from_ssal_path_length_works_on_parsed_graph():
+    """Graph built from SSAL should support path_length()."""
+    graph = build_graph_from_ssal(SIMPLE_SSAL)
+
+    assert graph.path_length(["A", "B", "C", "D"]) == 4.0
+
+
+def test_build_graph_from_ssal_raises_for_edge_before_any_node():
+    """An edge line before a source node should fail with a clear error."""
+    ssal = """
+  B {1.0, Road, 2w}
+A:
+""".strip("\n")
+
+    with pytest.raises(ValueError, match="Edge appears before any source node"):
+        build_graph_from_ssal(ssal)
+
+
+def test_build_graph_from_ssal_raises_for_malformed_line():
+    """A line that is neither a node header nor an edge should fail clearly."""
+    ssal = """
+A:
+this is not valid
+""".strip()
+
+    with pytest.raises(ValueError, match="Could not parse SSAL line"):
+        build_graph_from_ssal(ssal)
+
+
+def test_build_graph_from_ssal_raises_for_missing_edge_length():
+    """An edge without a length should fail because Dijkstra needs weights."""
+    ssal = """
+A:
+  B {}
+""".strip()
+
+    with pytest.raises(ValueError, match="Missing edge length"):
+        build_graph_from_ssal(ssal)
+
+
+def test_build_graph_from_ssal_raises_for_invalid_edge_length():
+    """Invalid edge lengths from SSAL should fail during graph construction."""
+    ssal = """
+A:
+  B {not-a-number, Road, 2w}
+""".strip()
+
+    with pytest.raises(ValueError, match="Invalid edge length"):
+        build_graph_from_ssal(ssal)
+
+
+def test_build_graph_from_ssal_allows_negative_length_for_later_dijkstra_validation():
+    """Parser keeps negative lengths; Dijkstra should reject them later."""
+    ssal = """
+A:
+  B {-1.0, Road, 1w}
+B:
+""".strip()
+
+    graph = build_graph_from_ssal(ssal)
+    edge = graph.get_edge("A", "B")
+
+    assert edge is not None
+    assert edge.length == -1.0
