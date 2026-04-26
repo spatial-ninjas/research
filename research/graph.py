@@ -1,3 +1,15 @@
+"""Graph utilities for SSAL-native route evaluation.
+
+This module converts compact SSAL text into a small directed graph and provides
+Dijkstra shortest-path search over that graph. The goal is to compute ground
+truth from the same SSAL representation that is shown to the LLM, avoiding
+mismatches with external routing services.
+
+The graph treats every SSAL neighbor entry as a directed edge. Reverse edges are
+not inferred here; bidirectional roads should already be represented by the SSAL
+generation step as two directed adjacency entries.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,6 +24,8 @@ _EDGE_RE = re.compile(r"^\s+(\S+)\s+\{(.*)\}\s*$")
 
 @dataclass(frozen=True)
 class Edge:
+    """Directed edge parsed from SSAL."""
+
     source: str
     target: str
     length: float
@@ -22,15 +36,19 @@ class Edge:
 
 @dataclass
 class Graph:
+    """Small directed graph representation used for SSAL-native evaluation."""
+
     adjacency: dict[str, list[Edge]]
 
     def nodes(self) -> list[str]:
+        """Return sorted node IDs for deterministic UI display and tests."""
         return sorted(self.adjacency.keys())
 
     def has_node(self, node: str) -> bool:
         return node in self.adjacency
 
     def get_edge(self, source: str, target: str) -> Edge | None:
+        """Return a directed edge only if it exists exactly as source -> target."""
         for edge in self.adjacency.get(source, []):
             if edge.target == target:
                 return edge
@@ -40,6 +58,7 @@ class Graph:
         return self.get_edge(source, target) is not None
 
     def path_length(self, path: list[str]) -> float:
+        """Compute path length from graph edges instead of trusting model output."""        
         if len(path) < 2:
             return 0.0
 
@@ -55,6 +74,13 @@ class Graph:
 
 
 def parse_edge_attrs(raw_attrs: str) -> dict[str, Any]:
+    """Parse the comma-separated metadata inside an SSAL edge block.
+
+    The first three positional fields follow the compact SSAL convention:
+    length, street/name, and direction marker. Additional key=value fields
+    are preserved so later code can use coordinates or other exported metadata.
+    """
+
     parts = [part.strip() for part in raw_attrs.split(",")]
     attrs: dict[str, Any] = {}
 
@@ -87,6 +113,13 @@ def parse_edge_attrs(raw_attrs: str) -> dict[str, Any]:
 
 
 def build_graph_from_ssal(ssal_text: str) -> Graph:
+    """Build a directed graph from compact SSAL text.
+
+    Reverse edges are not inferred here. If a road is traversable in both
+    directions, the SSAL generation step should already have emitted both
+    adjacency entries.
+    """
+
     adjacency: dict[str, list[Edge]] = {}
     current_node: str | None = None
 
@@ -125,6 +158,9 @@ def build_graph_from_ssal(ssal_text: str) -> Graph:
             )
 
             adjacency.setdefault(current_node, []).append(edge)
+            
+            # Target-only nodes still need to exist so they can be valid
+            # destinations and can be distinguished from unknown node IDs.
             adjacency.setdefault(target, [])
             continue
 
@@ -138,6 +174,11 @@ def dijkstra_shortest_path(
     origin: str,
     destination: str,
 ) -> dict[str, Any]:
+    """Return the shortest path using edge lengths from the SSAL-derived graph.
+
+    The result is a plain dictionary because the dashboard and evaluator can
+    serialize it directly and display failure reasons without exception handling.
+    """
     if origin not in graph.adjacency:
         return {
             "ok": False,
@@ -166,9 +207,8 @@ def dijkstra_shortest_path(
     distances: dict[str, float] = {origin: 0.0}
     previous: dict[str, str | None] = {origin: None}
 
-    # Heap entries are ordered by (distance, node_id).
-	# This makes equal-distance frontier expansion deterministic:
-	# smaller node IDs are expanded first using lexicographic string order.
+    # Heap entries are ordered by (distance, node_id). This gives deterministic
+    # equal-distance frontier expansion using lexicographic node ID order.
     queue: list[tuple[float, str]] = [(0.0, origin)]
 
     while queue:
