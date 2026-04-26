@@ -46,3 +46,35 @@ class Graph:
             total += edge.length
 
         return total
+
+def parse_edge_attrs(raw_attrs: str) -> dict[str, Any]:
+    parts = [part.strip() for part in raw_attrs.split(",")]
+    attrs: dict[str, Any] = {}
+
+    if parts and parts[0]:
+        try:
+            attrs["length"] = float(parts[0])
+        except ValueError:
+            raise ValueError(f"Invalid edge length: {parts[0]!r}")
+
+    if len(parts) >= 2 and parts[1]:
+        attrs["name"] = parts[1]
+
+    if len(parts) >= 3 and parts[2]:
+        attrs["direction"] = parts[2]
+
+    for part in parts[3:]:
+        if "=" not in part:
+            continue
+
+        key, value = part.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+
+        try:
+            attrs[key] = float(value)
+        except ValueError:
+            attrs[key] = value
+
+    return attrs
+
