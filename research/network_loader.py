@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
+import urllib.request
 
 from research.graph import Graph, build_graph_from_ssal
 from research.ssal import gpkg_to_ssal
@@ -115,3 +116,40 @@ def load_network_bundle_from_gpkg(
         edges_layer=edges_layer,
         nodes_layer=nodes_layer,
     )
+
+
+def fetch_or_reuse_cached_file(
+    url: str,
+    cache_path: str | Path,
+    expected_sha256: str | None = None,
+) -> Path:
+    """Fetch a file into cache, reusing existing files when valid.
+
+    If expected_sha256 is provided, cached and downloaded files must match
+    it. Invalid cached files are replaced; invalid downloads are deleted and
+    reported with a clear error.
+    """
+    cache_path = Path(cache_path)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if cache_path.exists():
+        if expected_sha256 is None:
+            return cache_path
+
+        if sha256_file(cache_path) == expected_sha256:
+            return cache_path
+
+        cache_path.unlink()
+
+    urllib.request.urlretrieve(url, cache_path)
+
+    if expected_sha256 is not None:
+        actual = sha256_file(cache_path)
+        if actual != expected_sha256:
+            cache_path.unlink(missing_ok=True)
+            raise ValueError(
+                "Downloaded file checksum mismatch: "
+                f"expected {expected_sha256}, got {actual}"
+            )
+
+    return cache_path

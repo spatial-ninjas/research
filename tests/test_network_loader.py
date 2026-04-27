@@ -20,6 +20,7 @@ from research.graph import Graph
 from research.network_loader import (
     DEFAULT_INCLUDE_ATTRS,
     NetworkBundle,
+    fetch_or_reuse_cached_file,
     load_network_bundle_from_gpkg,
     sha256_file,
     sha256_text,
@@ -310,4 +311,147 @@ Y:
     assert bundle.graph.has_node("Y")
     assert bundle.graph.has_edge("X", "Y")
     assert bundle.graph.path_length(["X", "Y"]) == 7.5
-    
+
+
+# ---------------------------------------------------------------------------
+# Cached file loading
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_or_reuse_cached_file_reuses_existing_file_without_checksum(tmp_path):
+    """Existing cached files should be reused when no checksum is required."""
+    cache_path = tmp_path / "cache" / "network.gpkg"
+    cache_path.parent.mkdir()
+    cache_path.write_bytes(b"cached")
+
+    result = fetch_or_reuse_cached_file(
+        url="https://example.com/network.gpkg",
+        cache_path=cache_path,
+    )
+
+    assert result == cache_path
+    assert cache_path.read_bytes() == b"cached"
+
+
+def test_fetch_or_reuse_cached_file_reuses_existing_file_when_checksum_matches(
+    tmp_path,
+):
+    """Cached files should be reused when their checksum matches."""
+    cache_path = tmp_path / "cache" / "network.gpkg"
+    cache_path.parent.mkdir()
+    cache_path.write_bytes(b"cached")
+
+    expected = sha256_file(cache_path)
+
+    result = fetch_or_reuse_cached_file(
+        url="https://example.com/network.gpkg",
+        cache_path=cache_path,
+        expected_sha256=expected,
+    )
+
+    assert result == cache_path
+    assert cache_path.read_bytes() == b"cached"
+
+
+def test_fetch_or_reuse_cached_file_downloads_when_missing(monkeypatch, tmp_path):
+    """Missing cached files should be downloaded into the requested path."""
+    cache_path = tmp_path / "cache" / "network.gpkg"
+
+    def fake_urlretrieve(url, filename):
+        Path(filename).write_bytes(b"downloaded")
+        return filename, None
+
+    monkeypatch.setattr(
+        "research.network_loader.urllib.request.urlretrieve",
+        fake_urlretrieve,
+    )
+
+    result = fetch_or_reuse_cached_file(
+        url="https://example.com/network.gpkg",
+        cache_path=cache_path,
+    )
+
+    assert result == cache_path
+    assert cache_path.read_bytes() == b"downloaded"
+
+
+def test_fetch_or_reuse_cached_file_creates_parent_directory(
+    monkeypatch,
+    tmp_path,
+):
+    """The cache loader should create missing parent directories."""
+    cache_path = tmp_path / "missing" / "nested" / "network.gpkg"
+
+    def fake_urlretrieve(url, filename):
+        Path(filename).write_bytes(b"downloaded")
+        return filename, None
+
+    monkeypatch.setattr(
+        "research.network_loader.urllib.request.urlretrieve",
+        fake_urlretrieve,
+    )
+
+    fetch_or_reuse_cached_file(
+        url="https://example.com/network.gpkg",
+        cache_path=cache_path,
+    )
+
+    assert cache_path.exists()
+    assert cache_path.parent.exists()
+
+
+def test_fetch_or_reuse_cached_file_refetches_when_cached_checksum_mismatches(
+    monkeypatch,
+    tmp_path,
+):
+    """A stale cached file should be replaced when checksum verification fails."""
+    cache_path = tmp_path / "cache" / "network.gpkg"
+    cache_path.parent.mkdir()
+    cache_path.write_bytes(b"old bad cached file")
+
+    expected_downloaded = b"downloaded"
+    expected_hash = hashlib.sha256(expected_downloaded).hexdigest()
+
+    def fake_urlretrieve(url, filename):
+        Path(filename).write_bytes(expected_downloaded)
+        return filename, None
+
+    monkeypatch.setattr(
+        "research.network_loader.urllib.request.urlretrieve",
+        fake_urlretrieve,
+    )
+
+    result = fetch_or_reuse_cached_file(
+        url="https://example.com/network.gpkg",
+        cache_path=cache_path,
+        expected_sha256=expected_hash,
+    )
+
+    assert result == cache_path
+    assert cache_path.read_bytes() == expected_downloaded
+
+
+def test_fetch_or_reuse_cached_file_deletes_download_and_raises_on_checksum_mismatch(
+    monkeypatch,
+    tmp_path,
+):
+    """Invalid downloads should not remain in the cache."""
+    cache_path = tmp_path / "cache" / "network.gpkg"
+
+    def fake_urlretrieve(url, filename):
+        Path(filename).write_bytes(b"bad download")
+        return filename, None
+
+    monkeypatch.setattr(
+        "research.network_loader.urllib.request.urlretrieve",
+        fake_urlretrieve,
+    )
+
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        fetch_or_reuse_cached_file(
+            url="https://example.com/network.gpkg",
+            cache_path=cache_path,
+            expected_sha256="not-the-real-hash",
+        )
+
+    assert not cache_path.exists()
