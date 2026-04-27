@@ -12,6 +12,9 @@ import pytest
 from research.graph import Graph, build_graph_from_ssal
 from research.network_loader import NetworkBundle
 from scripts.evaluate_history import (
+    DEFAULT_EDGES_LAYER,
+    DEFAULT_GPKG_PATH,
+    DEFAULT_NODES_LAYER,
     evaluate_entry_file,
     evaluate_history_file,
     evaluate_route_history_entry,
@@ -20,6 +23,7 @@ from scripts.evaluate_history import (
     get_route_context,
     load_entry,
     load_history,
+    parse_args,
     summarize_results,
     write_results_json,
 )
@@ -905,3 +909,130 @@ def test_write_results_json_rejects_incomplete_bulk_payload(tmp_path):
             output_path,
             results=[{"status": "evaluated"}],
         )
+
+
+# ---------------------------------------------------------------------------
+# CLI argument parsing
+# ---------------------------------------------------------------------------
+
+
+def test_parse_args_accepts_entry_json_mode():
+    """CLI should accept one-entry evaluation mode."""
+    args = parse_args(
+        [
+            "--entry-json",
+            "entry.json",
+            "--gpkg-path",
+            "network.gpkg",
+            "--edges-layer",
+            "edges",
+            "--nodes-layer",
+            "nodes",
+            "--output",
+            "result.json",
+        ]
+    )
+
+    assert args.entry_json == "entry.json"
+    assert args.history_json is None
+    assert args.gpkg_path == "network.gpkg"
+    assert args.edges_layer == "edges"
+    assert args.nodes_layer == "nodes"
+    assert args.output == "result.json"
+
+
+def test_parse_args_accepts_history_json_mode():
+    """CLI should accept bulk history-export evaluation mode."""
+    args = parse_args(
+        [
+            "--history-json",
+            "history.json",
+            "--gpkg-path",
+            "network.gpkg",
+            "--edges-layer",
+            "edges",
+            "--nodes-layer",
+            "nodes",
+            "--output",
+            "results.json",
+        ]
+    )
+
+    assert args.history_json == "history.json"
+    assert args.entry_json is None
+    assert args.gpkg_path == "network.gpkg"
+    assert args.edges_layer == "edges"
+    assert args.nodes_layer == "nodes"
+    assert args.output == "results.json"
+
+
+def test_parse_args_requires_one_input_mode():
+    """CLI should require either entry-json or history-json."""
+    with pytest.raises(SystemExit):
+        parse_args([])
+
+
+def test_parse_args_rejects_both_entry_and_history_json():
+    """CLI should reject ambiguous input mode selection."""
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--entry-json",
+                "entry.json",
+                "--history-json",
+                "history.json",
+                "--gpkg-path",
+                "network.gpkg",
+                "--edges-layer",
+                "edges",
+                "--nodes-layer",
+                "nodes",
+            ]
+        )
+
+
+def test_parse_args_uses_network_defaults(monkeypatch):
+    """CLI should provide local network defaults when no override is given."""
+    monkeypatch.delenv("GPKG_PATH", raising=False)
+    monkeypatch.delenv("EDGES_LAYER", raising=False)
+    monkeypatch.delenv("NODES_LAYER", raising=False)
+
+    args = parse_args(["--entry-json", "entry.json"])
+
+    assert args.gpkg_path == DEFAULT_GPKG_PATH
+    assert args.edges_layer == DEFAULT_EDGES_LAYER
+    assert args.nodes_layer == DEFAULT_NODES_LAYER
+
+
+def test_parse_args_uses_network_env_overrides(monkeypatch):
+    """CLI should allow network defaults to come from environment variables."""
+    monkeypatch.setenv("GPKG_PATH", "env-network.gpkg")
+    monkeypatch.setenv("EDGES_LAYER", "env-edges")
+    monkeypatch.setenv("NODES_LAYER", "env-nodes")
+
+    args = parse_args(["--entry-json", "entry.json"])
+
+    assert args.gpkg_path == "env-network.gpkg"
+    assert args.edges_layer == "env-edges"
+    assert args.nodes_layer == "env-nodes"
+
+
+def test_parse_args_does_not_require_ors_api_key(monkeypatch):
+    """CLI parsing should not depend on OpenRouteService credentials."""
+    monkeypatch.delenv("ORS_API_KEY", raising=False)
+
+    args = parse_args(
+        [
+            "--entry-json",
+            "entry.json",
+            "--gpkg-path",
+            "network.gpkg",
+            "--edges-layer",
+            "edges",
+            "--nodes-layer",
+            "nodes",
+        ]
+    )
+
+    assert args.entry_json == "entry.json"
+    assert args.gpkg_path == "network.gpkg"

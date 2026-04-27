@@ -11,6 +11,9 @@ belong in research.evaluation.
 from __future__ import annotations
 
 import json
+import argparse
+import os
+
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
@@ -19,6 +22,11 @@ from typing import Any
 from research.evaluation import evaluate_route_response
 from research.graph import Graph
 from research.network_loader import load_network_bundle_from_gpkg
+
+
+DEFAULT_GPKG_PATH = "data/raw/routing_networks/osm_southern_helsinki_slimmed_cropped.gpkg"
+DEFAULT_EDGES_LAYER = "slimmed_cropped_edges"
+DEFAULT_NODES_LAYER = "slimmed_cropped_nodes"
 
 
 def load_entry(entry_json_path: str | Path) -> dict[str, Any]:
@@ -324,3 +332,55 @@ def write_results_json(
         json.dumps(payload, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments for one-entry or bulk history evaluation."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Evaluate route-history entries with the shared "
+            "SSAL-native evaluator."
+        )
+    )
+
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument(
+        "--entry-json",
+        help="Path to a JSON file containing one route history entry.",
+    )
+    input_group.add_argument(
+        "--history-json",
+        help="Path to a JSON file containing a bulk route history export.",
+    )
+
+    parser.add_argument(
+        "--gpkg-path",
+        default=os.getenv("GPKG_PATH", DEFAULT_GPKG_PATH),
+        help=(
+            "Path to GeoPackage file "
+            f"(default: env GPKG_PATH or {DEFAULT_GPKG_PATH})."
+        ),
+    )
+    parser.add_argument(
+        "--edges-layer",
+        default=os.getenv("EDGES_LAYER", DEFAULT_EDGES_LAYER),
+        help=(
+            "GeoPackage edge layer "
+            f"(default: env EDGES_LAYER or {DEFAULT_EDGES_LAYER})."
+        ),
+    )
+    parser.add_argument(
+        "--nodes-layer",
+        default=os.getenv("NODES_LAYER", DEFAULT_NODES_LAYER),
+        help=(
+            "GeoPackage node layer "
+            f"(default: env NODES_LAYER or {DEFAULT_NODES_LAYER})."
+        ),
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional output JSON path.",
+    )
+
+    return parser.parse_args(argv)
