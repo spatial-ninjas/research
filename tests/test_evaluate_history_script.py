@@ -10,7 +10,9 @@ import json
 import pytest
 
 from research.graph import Graph, build_graph_from_ssal
+from research.network_loader import NetworkBundle
 from scripts.evaluate_history import (
+    evaluate_entry_file,
     evaluate_route_history_entry,
     get_entry_metadata,
     get_response_text,
@@ -353,3 +355,87 @@ def test_evaluate_route_history_entry_skips_missing_route_context():
     assert result["provider"] == "openai"
     assert result["model"] == "gpt-test"
     assert result["ssal_hash"] == "hash123"
+
+
+# ---------------------------------------------------------------------------
+# Entry-file route evaluation
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_entry_file_loads_bundle_and_evaluates_entry(
+    monkeypatch,
+    tmp_path,
+):
+    """Entry-file evaluation should load a bundle and evaluate the entry."""
+    entry_path = tmp_path / "entry.json"
+    entry = {
+        "id": "entry-1",
+        "provider": "openai",
+        "model": "gpt-test",
+        "origin": "A",
+        "destination": "C",
+        "response_text": """
+{
+  "origin": "A",
+  "destination": "C",
+  "total_length": 2.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "C", "edge_name": "Road BC"}
+  ],
+  "status": "success"
+}
+""",
+    }
+    entry_path.write_text(json.dumps(entry), encoding="utf-8")
+
+    graph = build_graph_from_ssal(SIMPLE_SSAL)
+    bundle = NetworkBundle(
+        gpkg_path=tmp_path / "network.gpkg",
+        ssal_text=SIMPLE_SSAL,
+        ssal_hash="hash123",
+        graph=graph,
+        edges_layer="edges",
+        nodes_layer="nodes",
+    )
+
+    captured_loader = {}
+
+    def fake_load_network_bundle_from_gpkg(**kwargs):
+        """Avoid real GeoPackage loading; return a tiny test bundle instead."""
+        captured_loader.update(kwargs)
+        return bundle
+
+    # Patch only the network loader used by evaluate_entry_file().
+    # The actual entry evaluation still runs through evaluate_route_history_entry().
+    monkeypatch.setattr(
+        "scripts.evaluate_history.load_network_bundle_from_gpkg",
+        fake_load_network_bundle_from_gpkg,
+    )
+
+    result = evaluate_entry_file(
+        entry_json_path=entry_path,
+        gpkg_path="network.gpkg",
+        edges_layer="edges",
+        nodes_layer="nodes",
+    )
+
+    assert captured_loader == {
+        "gpkg_path": "network.gpkg",
+        "edges_layer": "edges",
+        "nodes_layer": "nodes",
+    }
+
+    assert result["entry_id"] == "entry-1"
+    assert result["provider"] == "openai"
+    assert result["model"] == "gpt-test"
+    assert result["origin"] == "A"
+    assert result["destination"] == "C"
+    assert result["ssal_hash"] == "hash123"
+
+    assert result["status"] == "evaluated"
+    assert result["valid_path"] is True
+    assert result["candidate_path"] == ["A", "B", "C"]
+    assert result["candidate_computed_length"] == 2.0
+    assert result["ground_truth_length"] == 2.0

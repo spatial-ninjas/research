@@ -13,6 +13,7 @@ from typing import Any
 
 from research.evaluation import evaluate_route_response
 from research.graph import Graph
+from research.network_loader import load_network_bundle_from_gpkg
 
 
 def load_entry(entry_json_path: str | Path) -> dict[str, Any]:
@@ -135,3 +136,30 @@ def evaluate_route_history_entry(
         "ssal_hash": ssal_hash,
         **evaluation,
     }
+
+
+def evaluate_entry_file(
+    entry_json_path: str | Path,
+    gpkg_path: str | Path,
+    edges_layer: str,
+    nodes_layer: str,
+) -> dict[str, Any]:
+    """Evaluate one route-history entry JSON file.
+
+    This is the file-based wrapper around the single-entry evaluator. It loads
+    the network bundle once, then delegates the actual entry evaluation to
+    evaluate_route_history_entry().
+    """
+    entry = load_entry(entry_json_path)
+
+    bundle = load_network_bundle_from_gpkg(
+        gpkg_path=gpkg_path,
+        edges_layer=edges_layer,
+        nodes_layer=nodes_layer,
+    )
+
+    return evaluate_route_history_entry(
+        entry=entry,
+        graph=bundle.graph,
+        ssal_hash=bundle.ssal_hash,
+    )
