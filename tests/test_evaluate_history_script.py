@@ -13,6 +13,7 @@ from research.graph import Graph, build_graph_from_ssal
 from research.network_loader import NetworkBundle
 from scripts.evaluate_history import (
     evaluate_entry_file,
+    evaluate_history_file,
     evaluate_route_history_entry,
     get_entry_metadata,
     get_response_text,
@@ -439,3 +440,123 @@ def test_evaluate_entry_file_loads_bundle_and_evaluates_entry(
     assert result["candidate_path"] == ["A", "B", "C"]
     assert result["candidate_computed_length"] == 2.0
     assert result["ground_truth_length"] == 2.0
+
+
+# ---------------------------------------------------------------------------
+# Bulk history-file route evaluation
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_history_file_uses_single_entry_evaluator_for_each_entry(
+    monkeypatch,
+    tmp_path,
+):
+    """Bulk history evaluation should reuse the single-entry evaluation path."""
+    history_path = tmp_path / "history.json"
+    history = [
+        {
+            "id": "entry-1",
+            "provider": "openai",
+            "model": "gpt-test",
+            "origin": "A",
+            "destination": "C",
+            "response_text": """
+{
+  "origin": "A",
+  "destination": "C",
+  "total_length": 2.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "C", "edge_name": "Road BC"}
+  ],
+  "status": "success"
+}
+""",
+        },
+        {
+            "id": "entry-2",
+            "provider": "google",
+            "model": "gemini-test",
+            "origin": "B",
+            "destination": "C",
+            "response_text": """
+{
+  "origin": "B",
+  "destination": "C",
+  "total_length": 1.0,
+  "route": [
+    {"node": "B", "edge_name": "start"},
+    {"node": "C", "edge_name": "Road BC"}
+  ],
+  "status": "success"
+}
+""",
+        },
+    ]
+    history_path.write_text(json.dumps(history), encoding="utf-8")
+
+    graph = build_graph_from_ssal(SIMPLE_SSAL)
+    bundle = NetworkBundle(
+        gpkg_path=tmp_path / "network.gpkg",
+        ssal_text=SIMPLE_SSAL,
+        ssal_hash="hash123",
+        graph=graph,
+        edges_layer="edges",
+        nodes_layer="nodes",
+    )
+
+    captured_loader = {}
+    load_count = 0
+
+    def fake_load_network_bundle_from_gpkg(**kwargs):
+        """Avoid real GeoPackage loading; return a tiny test bundle instead."""
+        nonlocal load_count
+        load_count += 1
+        captured_loader.update(kwargs)
+        return bundle
+
+    # Patch only the network-loading boundary. The bulk wrapper should still
+    # call the real single-entry evaluator for each row.
+    monkeypatch.setattr(
+        "scripts.evaluate_history.load_network_bundle_from_gpkg",
+        fake_load_network_bundle_from_gpkg,
+    )
+
+    rows = evaluate_history_file(
+        history_json_path=history_path,
+        gpkg_path="network.gpkg",
+        edges_layer="edges",
+        nodes_layer="nodes",
+    )
+
+    assert load_count == 1
+    assert captured_loader == {
+        "gpkg_path": "network.gpkg",
+        "edges_layer": "edges",
+        "nodes_layer": "nodes",
+    }
+
+    assert len(rows) == 2
+
+    assert rows[0]["entry_id"] == "entry-1"
+    assert rows[0]["provider"] == "openai"
+    assert rows[0]["model"] == "gpt-test"
+    assert rows[0]["origin"] == "A"
+    assert rows[0]["destination"] == "C"
+    assert rows[0]["ssal_hash"] == "hash123"
+    assert rows[0]["status"] == "evaluated"
+    assert rows[0]["valid_path"] is True
+    assert rows[0]["candidate_path"] == ["A", "B", "C"]
+    assert rows[0]["candidate_computed_length"] == 2.0
+
+    assert rows[1]["entry_id"] == "entry-2"
+    assert rows[1]["provider"] == "google"
+    assert rows[1]["model"] == "gemini-test"
+    assert rows[1]["origin"] == "B"
+    assert rows[1]["destination"] == "C"
+    assert rows[1]["ssal_hash"] == "hash123"
+    assert rows[1]["status"] == "evaluated"
+    assert rows[1]["valid_path"] is True
+    assert rows[1]["candidate_path"] == ["B", "C"]
+    assert rows[1]["candidate_computed_length"] == 1.0

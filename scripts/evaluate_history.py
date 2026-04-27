@@ -163,3 +163,32 @@ def evaluate_entry_file(
         graph=bundle.graph,
         ssal_hash=bundle.ssal_hash,
     )
+
+
+def evaluate_history_file(
+    history_json_path: str | Path,
+    gpkg_path: str | Path,
+    edges_layer: str,
+    nodes_layer: str,
+) -> list[dict[str, Any]]:
+    """Evaluate a bulk dashboard history export.
+
+    Bulk mode is only a convenience wrapper around the single-entry evaluator.
+    The network bundle is loaded once and reused for every entry.
+    """
+    history = load_history(history_json_path)
+
+    bundle = load_network_bundle_from_gpkg(
+        gpkg_path=gpkg_path,
+        edges_layer=edges_layer,
+        nodes_layer=nodes_layer,
+    )
+
+    return [
+        evaluate_route_history_entry(
+            entry=entry,
+            graph=bundle.graph,
+            ssal_hash=bundle.ssal_hash,
+        )
+        for entry in history
+    ]
