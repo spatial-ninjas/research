@@ -1,14 +1,16 @@
 """Tests for network bundle loading utilities.
 
-This module currently covers the first small slices of research.network_loader:
+This module covers the reusable network loading pieces in
+research.network_loader:
 
 - module import
 - SSAL text hashing with sha256_text()
 - local file hashing with sha256_file()
 - NetworkBundle storage and immutability
-
-GeoPackage-to-SSAL loading tests should be added later once
-load_network_bundle_from_gpkg() is implemented.
+- default SSAL loading options
+- local GeoPackage bundle loading with mocked SSAL generation
+- optional cached file loading and checksum verification
+- optional real-data integration loading when a GeoPackage artifact is available
 """
 
 import hashlib
@@ -314,7 +316,7 @@ Y:
 
 
 # ---------------------------------------------------------------------------
-# Cached file loading
+# Cached URL file loading
 # ---------------------------------------------------------------------------
 
 
@@ -455,3 +457,36 @@ def test_fetch_or_reuse_cached_file_deletes_download_and_raises_on_checksum_mism
         )
 
     assert not cache_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Real-data integration
+# ---------------------------------------------------------------------------
+
+
+REAL_GPKG_PATH = Path(
+    "data/raw/routing_networks/osm_southern_helsinki_slimmed_cropped.gpkg"
+)
+
+REAL_EDGES_LAYER = "slimmed_cropped_edges"
+REAL_NODES_LAYER = "slimmed_cropped_nodes"
+
+
+@pytest.mark.integration
+def test_load_network_bundle_from_real_gpkg_if_available():
+    """A real versioned GeoPackage should load into a usable network bundle."""
+    if not REAL_GPKG_PATH.exists():
+        pytest.skip(f"GeoPackage not found: {REAL_GPKG_PATH}")
+
+    bundle = load_network_bundle_from_gpkg(
+        gpkg_path=REAL_GPKG_PATH,
+        edges_layer=REAL_EDGES_LAYER,
+        nodes_layer=REAL_NODES_LAYER,
+    )
+
+    assert bundle.gpkg_path == REAL_GPKG_PATH
+    assert bundle.edges_layer == REAL_EDGES_LAYER
+    assert bundle.nodes_layer == REAL_NODES_LAYER
+    assert bundle.ssal_text
+    assert bundle.ssal_hash == sha256_text(bundle.ssal_text)
+    assert len(bundle.graph.nodes()) > 0

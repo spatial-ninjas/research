@@ -95,7 +95,7 @@ def load_network_bundle_from_gpkg(
     gpkg_path = Path(gpkg_path)
 
     if include_attrs is None:
-        include_attrs = DEFAULT_INCLUDE_ATTRS
+        include_attrs = list(DEFAULT_INCLUDE_ATTRS)
 
     ssal_text = gpkg_to_ssal(
         gpkg_path=str(gpkg_path),
