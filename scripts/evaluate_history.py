@@ -1,13 +1,18 @@
-"""Thin CLI helpers for offline route-history evaluation.
+"""Thin wrappers for offline route-history evaluation.
 
-This script adapts dashboard history entries into calls to the shared
-SSAL-native evaluator. Route parsing, graph validation, Dijkstra ground truth,
-and metric computation should stay in research.evaluation.
+This module adapts dashboard history entries into calls to the shared
+SSAL-native evaluator. It should handle file loading, metadata preservation,
+network-bundle loading, and output shaping only.
+
+Route parsing, graph validation, Dijkstra ground truth, and metric computation
+belong in research.evaluation.
 """
 
 from __future__ import annotations
 
 import json
+from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -146,9 +151,8 @@ def evaluate_entry_file(
 ) -> dict[str, Any]:
     """Evaluate one route-history entry JSON file.
 
-    This is the file-based wrapper around the single-entry evaluator. It loads
-    the network bundle once, then delegates the actual entry evaluation to
-    evaluate_route_history_entry().
+    This file-based wrapper loads the network bundle once, then delegates the
+    actual route evaluation to evaluate_route_history_entry().
     """
     entry = load_entry(entry_json_path)
 
@@ -192,3 +196,98 @@ def evaluate_history_file(
         )
         for entry in history
     ]
+
+
+def _average(values: list[float]) -> float | None:
+    """Return the mean value, or None when no values are available."""
+    if not values:
+        return None
+
+    return sum(values) / len(values)
+
+
+def _model_key(row: dict[str, Any]) -> str:
+    """Return a stable provider/model grouping key for summaries."""
+    provider = row.get("provider") or "unknown"
+    model = row.get("model") or "unknown"
+    return f"{provider}/{model}"
+
+
+def _route_key(row: dict[str, Any]) -> str:
+    """Return a stable origin/destination grouping key for summaries."""
+    origin = row.get("origin") or "unknown"
+    destination = row.get("destination") or "unknown"
+    return f"{origin}->{destination}"
+
+
+def _group_results_by(
+    results: list[dict[str, Any]],
+    key_fn: Callable[[dict[str, Any]], str],
+) -> dict[str, list[dict[str, Any]]]:
+    """Group result rows by a derived summary key."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+
+    for row in results:
+        groups.setdefault(key_fn(row), []).append(row)
+
+    return groups
+
+
+def _summarize_result_group(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize one group of evaluation rows."""
+    evaluated = [row for row in results if row.get("status") == "evaluated"]
+    skipped = [row for row in results if row.get("status") == "skipped"]
+
+    skip_reasons = Counter(row.get("reason") or "unknown" for row in skipped)
+
+    valid_path_values = [
+        1.0 if row.get("valid_path") else 0.0
+        for row in evaluated
+        if "valid_path" in row
+    ]
+
+    relative_errors = [
+        row["relative_length_error"]
+        for row in evaluated
+        if row.get("relative_length_error") is not None
+    ]
+
+    declared_errors = [
+        row["declared_length_relative_error"]
+        for row in evaluated
+        if row.get("declared_length_relative_error") is not None
+    ]
+
+    return {
+        "total_entries": len(results),
+        "evaluated_entries": len(evaluated),
+        "skipped_entries": len(skipped),
+        "skip_reasons": dict(skip_reasons),
+        "valid_path_rate": _average(valid_path_values),
+        "average_relative_length_error": _average(relative_errors),
+        "average_declared_length_relative_error": _average(declared_errors),
+    }
+
+
+def _summarize_groups(
+    groups: dict[str, list[dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    """Summarize grouped evaluation rows with deterministic key ordering."""
+    return {
+        key: _summarize_result_group(rows)
+        for key, rows in sorted(groups.items())
+    }
+
+
+def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return aggregate and grouped summaries for bulk evaluation rows."""
+    summary = _summarize_result_group(results)
+
+    summary["per_model"] = _summarize_groups(
+        _group_results_by(results, _model_key)
+    )
+    summary["per_route"] = _summarize_groups(
+        _group_results_by(results, _route_key)
+    )
+
+    return summary

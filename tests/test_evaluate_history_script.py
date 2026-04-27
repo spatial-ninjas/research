@@ -2,7 +2,7 @@
 
 These tests cover script-level wrapper behavior. The detailed route parsing,
 path validation, Dijkstra comparison, and metric calculations are tested in
-``research.evaluation``.
+research.evaluation.
 """
 
 import json
@@ -20,6 +20,7 @@ from scripts.evaluate_history import (
     get_route_context,
     load_entry,
     load_history,
+    summarize_results,
 )
 
 
@@ -560,3 +561,230 @@ def test_evaluate_history_file_uses_single_entry_evaluator_for_each_entry(
     assert rows[1]["valid_path"] is True
     assert rows[1]["candidate_path"] == ["B", "C"]
     assert rows[1]["candidate_computed_length"] == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Bulk result summaries
+# ---------------------------------------------------------------------------
+
+
+def test_summarize_results_counts_evaluated_and_skipped_entries():
+    """Bulk summary should count evaluated rows, skips, and available metrics."""
+    results = [
+        {
+            "status": "evaluated",
+            "provider": "openai",
+            "model": "gpt",
+            "valid_path": True,
+            "relative_length_error": 0.0,
+            "declared_length_relative_error": 0.1,
+        },
+        {
+            "status": "evaluated",
+            "provider": "openai",
+            "model": "gpt",
+            "valid_path": False,
+            "relative_length_error": None,
+            "declared_length_relative_error": None,
+        },
+        {
+            "status": "skipped",
+            "reason": "missing_route_context",
+            "provider": "google",
+            "model": "gemini",
+        },
+    ]
+
+    summary = summarize_results(results)
+
+    assert summary["total_entries"] == 3
+    assert summary["evaluated_entries"] == 2
+    assert summary["skipped_entries"] == 1
+    assert summary["skip_reasons"] == {"missing_route_context": 1}
+    assert summary["valid_path_rate"] == 0.5
+    assert summary["average_relative_length_error"] == 0.0
+    assert summary["average_declared_length_relative_error"] == 0.1
+
+
+def test_summarize_results_includes_per_model_counts():
+    """Bulk summaries should include grouped provider/model metrics."""
+    results = [
+        {
+            "status": "evaluated",
+            "provider": "openai",
+            "model": "gpt",
+            "valid_path": True,
+            "relative_length_error": 0.0,
+            "declared_length_relative_error": 0.1,
+        },
+        {
+            "status": "skipped",
+            "reason": "missing_route_context",
+            "provider": "openai",
+            "model": "gpt",
+        },
+        {
+            "status": "evaluated",
+            "provider": "google",
+            "model": "gemini",
+            "valid_path": False,
+            "relative_length_error": 0.5,
+            "declared_length_relative_error": None,
+        },
+    ]
+
+    summary = summarize_results(results)
+
+    assert summary["per_model"] == {
+        "google/gemini": {
+            "total_entries": 1,
+            "evaluated_entries": 1,
+            "skipped_entries": 0,
+            "skip_reasons": {},
+            "valid_path_rate": 0.0,
+            "average_relative_length_error": 0.5,
+            "average_declared_length_relative_error": None,
+        },
+        "openai/gpt": {
+            "total_entries": 2,
+            "evaluated_entries": 1,
+            "skipped_entries": 1,
+            "skip_reasons": {"missing_route_context": 1},
+            "valid_path_rate": 1.0,
+            "average_relative_length_error": 0.0,
+            "average_declared_length_relative_error": 0.1,
+        },
+    }
+
+
+def test_summarize_results_handles_empty_results():
+    """Empty bulk results should produce zero counts and no averages."""
+    summary = summarize_results([])
+
+    assert summary == {
+        "total_entries": 0,
+        "evaluated_entries": 0,
+        "skipped_entries": 0,
+        "skip_reasons": {},
+        "valid_path_rate": None,
+        "average_relative_length_error": None,
+        "average_declared_length_relative_error": None,
+        "per_model": {},
+        "per_route": {},
+    }
+
+
+def test_summarize_results_ignores_missing_optional_metric_fields():
+    """Missing optional metric fields should not break bulk summaries."""
+    results = [
+        {
+            "status": "evaluated",
+            "valid_path": True,
+        }
+    ]
+
+    summary = summarize_results(results)
+
+    expected_unknown_summary = {
+        "total_entries": 1,
+        "evaluated_entries": 1,
+        "skipped_entries": 0,
+        "skip_reasons": {},
+        "valid_path_rate": 1.0,
+        "average_relative_length_error": None,
+        "average_declared_length_relative_error": None,
+    }
+
+    assert summary["total_entries"] == 1
+    assert summary["evaluated_entries"] == 1
+    assert summary["skipped_entries"] == 0
+    assert summary["skip_reasons"] == {}
+    assert summary["valid_path_rate"] == 1.0
+    assert summary["average_relative_length_error"] is None
+    assert summary["average_declared_length_relative_error"] is None
+    assert summary["per_model"] == {
+        "unknown/unknown": expected_unknown_summary,
+    }
+    assert summary["per_route"] == {
+        "unknown->unknown": expected_unknown_summary,
+    }
+
+
+def test_summarize_results_counts_missing_skip_reason_as_unknown():
+    """Missing skip reasons should be grouped under unknown."""
+    results = [{"status": "skipped"}]
+
+    summary = summarize_results(results)
+
+    expected_unknown_summary = {
+        "total_entries": 1,
+        "evaluated_entries": 0,
+        "skipped_entries": 1,
+        "skip_reasons": {"unknown": 1},
+        "valid_path_rate": None,
+        "average_relative_length_error": None,
+        "average_declared_length_relative_error": None,
+    }
+
+    assert summary["skip_reasons"] == {"unknown": 1}
+    assert summary["per_model"] == {
+        "unknown/unknown": expected_unknown_summary,
+    }
+    assert summary["per_route"] == {
+        "unknown->unknown": expected_unknown_summary,
+    }
+
+
+def test_summarize_results_includes_per_route_counts():
+    """Bulk summaries should include grouped origin/destination metrics."""
+    results = [
+        {
+            "status": "evaluated",
+            "provider": "openai",
+            "model": "gpt",
+            "origin": "A",
+            "destination": "C",
+            "valid_path": True,
+            "relative_length_error": 0.0,
+            "declared_length_relative_error": 0.1,
+        },
+        {
+            "status": "evaluated",
+            "provider": "google",
+            "model": "gemini",
+            "origin": "A",
+            "destination": "C",
+            "valid_path": False,
+            "relative_length_error": 0.5,
+            "declared_length_relative_error": None,
+        },
+        {
+            "status": "skipped",
+            "reason": "missing_route_context",
+            "provider": "openai",
+            "model": "gpt",
+        },
+    ]
+
+    summary = summarize_results(results)
+
+    assert summary["per_route"] == {
+        "A->C": {
+            "total_entries": 2,
+            "evaluated_entries": 2,
+            "skipped_entries": 0,
+            "skip_reasons": {},
+            "valid_path_rate": 0.5,
+            "average_relative_length_error": 0.25,
+            "average_declared_length_relative_error": 0.1,
+        },
+        "unknown->unknown": {
+            "total_entries": 1,
+            "evaluated_entries": 0,
+            "skipped_entries": 1,
+            "skip_reasons": {"missing_route_context": 1},
+            "valid_path_rate": None,
+            "average_relative_length_error": None,
+            "average_declared_length_relative_error": None,
+        },
+    }
