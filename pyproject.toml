@@ -1,13 +1,28 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "spatial-ninjas-research"
 version = "0.1.0"
 description = "Reusable SSAL, graph, and route-evaluation utilities for Spatial Ninjas"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "geopandas>=0.14.0",
     "numpy>=1.26.0",
-    "python-dotenv>=1.0.0"
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
 ]
 
 [tool.setuptools.packages.find]
 include = ["research*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that use real versioned data artifacts when available",
+]
