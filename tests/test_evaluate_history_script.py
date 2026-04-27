@@ -25,7 +25,9 @@ from scripts.evaluate_history import (
     load_history,
     parse_args,
     summarize_results,
+    format_results_json,
     write_results_json,
+    main,
 )
 
 
@@ -911,6 +913,43 @@ def test_write_results_json_rejects_incomplete_bulk_payload(tmp_path):
         )
 
 
+def test_format_results_json_formats_single_result():
+    result = {
+        "entry_id": "entry-1",
+        "status": "evaluated",
+    }
+
+    text = format_results_json(result=result)
+    parsed = json.loads(text)
+
+    assert parsed == {
+        "result": result,
+    }
+
+
+def test_format_results_json_formats_bulk_results_and_summary():
+    results = [{"entry_id": "entry-1", "status": "evaluated"}]
+    summary = {
+        "total_entries": 1,
+        "evaluated_entries": 1,
+        "skipped_entries": 0,
+        "skip_reasons": {},
+        "valid_path_rate": 1.0,
+        "average_relative_length_error": None,
+        "average_declared_length_relative_error": None,
+        "per_model": {},
+        "per_route": {},
+    }
+
+    text = format_results_json(results=results, summary=summary)
+    parsed = json.loads(text)
+
+    assert parsed == {
+        "summary": summary,
+        "results": results,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CLI argument parsing
 # ---------------------------------------------------------------------------
@@ -1036,3 +1075,207 @@ def test_parse_args_does_not_require_ors_api_key(monkeypatch):
 
     assert args.entry_json == "entry.json"
     assert args.gpkg_path == "network.gpkg"
+
+
+# ---------------------------------------------------------------------------
+# CLI main wiring
+# ---------------------------------------------------------------------------
+
+
+def test_main_entry_mode_evaluates_entry_and_writes_output(monkeypatch, tmp_path):
+    """Entry-mode CLI should evaluate one entry and write JSON output."""
+    output_path = tmp_path / "result.json"
+    captured_call = {}
+
+    def fake_evaluate_entry_file(**kwargs):
+        captured_call.update(kwargs)
+        return {
+            "entry_id": "entry-1",
+            "status": "evaluated",
+        }
+
+    monkeypatch.setattr(
+        "scripts.evaluate_history.evaluate_entry_file",
+        fake_evaluate_entry_file,
+    )
+
+    exit_code = main(
+        [
+            "--entry-json",
+            "entry.json",
+            "--gpkg-path",
+            "network.gpkg",
+            "--edges-layer",
+            "edges",
+            "--nodes-layer",
+            "nodes",
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured_call == {
+        "entry_json_path": "entry.json",
+        "gpkg_path": "network.gpkg",
+        "edges_layer": "edges",
+        "nodes_layer": "nodes",
+    }
+
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+    assert written == {
+        "result": {
+            "entry_id": "entry-1",
+            "status": "evaluated",
+        }
+    }
+
+
+def test_main_history_mode_evaluates_history_summarizes_and_writes_output(
+    monkeypatch,
+    tmp_path,
+):
+    """Bulk-mode CLI should evaluate rows, summarize them, and write JSON output."""
+    output_path = tmp_path / "results.json"
+    captured_call = {}
+
+    rows = [
+        {
+            "entry_id": "entry-1",
+            "provider": "openai",
+            "model": "gpt",
+            "origin": "A",
+            "destination": "C",
+            "status": "evaluated",
+            "valid_path": True,
+            "relative_length_error": 0.0,
+            "declared_length_relative_error": None,
+        }
+    ]
+
+    def fake_evaluate_history_file(**kwargs):
+        captured_call.update(kwargs)
+        return rows
+
+    monkeypatch.setattr(
+        "scripts.evaluate_history.evaluate_history_file",
+        fake_evaluate_history_file,
+    )
+
+    exit_code = main(
+        [
+            "--history-json",
+            "history.json",
+            "--gpkg-path",
+            "network.gpkg",
+            "--edges-layer",
+            "edges",
+            "--nodes-layer",
+            "nodes",
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured_call == {
+        "history_json_path": "history.json",
+        "gpkg_path": "network.gpkg",
+        "edges_layer": "edges",
+        "nodes_layer": "nodes",
+    }
+
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert written["results"] == rows
+    assert written["summary"]["total_entries"] == 1
+    assert written["summary"]["evaluated_entries"] == 1
+    assert written["summary"]["per_model"]["openai/gpt"]["total_entries"] == 1
+    assert written["summary"]["per_route"]["A->C"]["total_entries"] == 1
+
+
+def test_main_entry_mode_prints_result_when_output_is_missing(
+    monkeypatch,
+    capsys,
+):
+    """Entry-mode CLI should print JSON when no output path is provided."""
+    def fake_evaluate_entry_file(**kwargs):
+        return {
+            "entry_id": "entry-1",
+            "status": "evaluated",
+        }
+
+    monkeypatch.setattr(
+        "scripts.evaluate_history.evaluate_entry_file",
+        fake_evaluate_entry_file,
+    )
+
+    exit_code = main(
+        [
+            "--entry-json",
+            "entry.json",
+            "--gpkg-path",
+            "network.gpkg",
+            "--edges-layer",
+            "edges",
+            "--nodes-layer",
+            "nodes",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    written = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert written == {
+        "result": {
+            "entry_id": "entry-1",
+            "status": "evaluated",
+        }
+    }
+
+
+def test_main_history_mode_prints_results_and_summary_when_output_is_missing(
+    monkeypatch,
+    capsys,
+):
+    """Bulk-mode CLI should print rows and summary when no output path is provided."""
+    def fake_evaluate_history_file(**kwargs):
+        return [
+            {
+                "entry_id": "entry-1",
+                "provider": "openai",
+                "model": "gpt",
+                "origin": "A",
+                "destination": "C",
+                "status": "evaluated",
+                "valid_path": True,
+                "relative_length_error": None,
+                "declared_length_relative_error": None,
+            }
+        ]
+
+    monkeypatch.setattr(
+        "scripts.evaluate_history.evaluate_history_file",
+        fake_evaluate_history_file,
+    )
+
+    exit_code = main(
+        [
+            "--history-json",
+            "history.json",
+            "--gpkg-path",
+            "network.gpkg",
+            "--edges-layer",
+            "edges",
+            "--nodes-layer",
+            "nodes",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    written = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert len(written["results"]) == 1
+    assert written["summary"]["total_entries"] == 1
