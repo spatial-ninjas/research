@@ -1,394 +1,326 @@
-import argparse
+"""Thin wrappers for offline route-history evaluation.
+
+This module adapts dashboard history entries into calls to the shared
+SSAL-native evaluator. It should handle file loading, metadata preservation,
+network-bundle loading, and output shaping only.
+
+Route parsing, graph validation, Dijkstra ground truth, and metric computation
+belong in research.evaluation.
+"""
+
+from __future__ import annotations
+
 import json
-import os
-import re
-from collections import Counter, defaultdict
+from collections import Counter
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-import geopandas as gpd
-import numpy as np
-from routingpy.routers import ORS
-
-load_dotenv()
-
-DEFAULT_GPKG_PATH = "data/raw/routing_networks/osm_southern_helsinki_slimmed_cropped.gpkg"
-DEFAULT_HISTORY_JSON = "data/raw/llm_history_exports/llm_compare_history_2026-04-20.json"
-DEFAULT_NODES_LAYER = "slimmed_cropped_nodes"
+from research.evaluation import evaluate_route_response
+from research.graph import Graph
+from research.network_loader import load_network_bundle_from_gpkg
 
 
-def clean_json(text: str) -> str | None:
-    """Extract the first JSON object-like block from model text output."""
-    if not text or not isinstance(text, str):
-        return None
+def load_entry(entry_json_path: str | Path) -> dict[str, Any]:
+    """Load one route-history entry from JSON.
 
-    text = text.strip()
-    text = re.sub(r"^```json\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"^```\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
+    The single-entry path mirrors the dashboard model where each route attempt
+    is stored as one row.
+    """
+    path = Path(entry_json_path)
 
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    return match.group(0) if match else None
+    with path.open("r", encoding="utf-8") as file:
+        data = json.load(file)
 
+    if not isinstance(data, dict):
+        raise ValueError("Entry JSON must contain one object")
 
-def looks_like_routing_prompt(prompt: str) -> bool:
-    """Heuristic to skip unrelated dashboard history entries."""
-    if not prompt:
-        return False
-
-    prompt_lower = prompt.lower()
-    routing_markers = [
-        "ssal",
-        "routing engine",
-        "origin node",
-        "destination node",
-        "shortest path",
-        "one-way",
-        "1w",
-        "2w",
-    ]
-    return any(marker in prompt_lower for marker in routing_markers)
-
-
-def load_node_lookup(gpkg_path: str, nodes_layer: str) -> dict[str, list[float]]:
-    """Load node coordinates keyed by OSM node id."""
-    nodes_gdf = gpd.read_file(gpkg_path, layer=nodes_layer)
-    return {
-        str(row["osmid"]): [float(row["x"]), float(row["y"])]
-        for _, row in nodes_gdf.iterrows()
-    }
-
-
-def load_history(history_json_path: str) -> list[dict[str, Any]]:
-    """Load exported dashboard history JSON."""
-    with open(history_json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, list):
-        raise ValueError("History JSON must contain a list of entries")
     return data
 
 
-def classify_skip_reason(entry: dict[str, Any], json_str: str | None) -> str | None:
+def load_history(history_json_path: str | Path) -> list[dict[str, Any]]:
+    """Load a bulk dashboard history export from JSON.
+
+    Bulk history is a convenience path. Each item should still be evaluated
+    through the same single-entry helper used by the dashboard-style flow.
     """
-    Classify obvious non-evaluable cases before json.loads.
-    Returns a skip reason string or None if processing should continue.
+    path = Path(history_json_path)
+
+    with path.open("r", encoding="utf-8") as file:
+        data = json.load(file)
+
+    if not isinstance(data, list):
+        raise ValueError("History JSON must contain a list of entries")
+
+    if not all(isinstance(item, dict) for item in data):
+        raise ValueError("History JSON entries must be objects")
+
+    return data
+
+
+def get_response_text(entry: dict[str, Any]) -> str:
+    """Return model response text from known history export fields."""
+    value = (
+        entry.get("response_text")
+        or entry.get("response")
+        or entry.get("text")
+        or ""
+    )
+    return str(value)
+
+
+def get_entry_metadata(entry: dict[str, Any]) -> dict[str, Any]:
+    """Return history metadata that should be preserved in output rows."""
+    return {
+        "entry_id": entry.get("id", entry.get("entry_id")),
+        "provider": entry.get("provider", "unknown"),
+        "model": entry.get("model", "unknown"),
+        "finish_status": entry.get("finish_status"),
+        "max_output_tokens": entry.get("max_output_tokens"),
+    }
+
+
+def get_route_context(entry: dict[str, Any]) -> dict[str, str] | None:
+    """Return origin/destination from explicit route metadata.
+
+    Prompt parsing is intentionally avoided here so the script does not become
+    another route parser. Older exports without route metadata should be skipped
+    or handled by a separate compatibility helper later.
     """
-    finish_status = entry.get("finish_status")
-    raw_text = entry.get("response_text") or entry.get("response") or entry.get("text") or ""
-    error_text = entry.get("error_text")
+    origin = entry.get("origin")
+    destination = entry.get("destination")
 
-    if error_text and not raw_text:
-        return "provider_error"
+    if origin is None or destination is None:
+        origin = entry.get("route_origin")
+        destination = entry.get("route_destination")
 
-    if not json_str:
-        if finish_status == "MAX_TOKENS":
-            return "cropped_json"
-        return "no_json"
+    if origin is None or destination is None:
+        return None
 
-    return None
+    return {
+        "origin": str(origin),
+        "destination": str(destination),
+    }
 
 
-def evaluate_entry(
+def evaluate_route_history_entry(
     entry: dict[str, Any],
-    node_lookup: dict[str, list[float]],
-    client: ORS,
+    graph: Graph,
+    ssal_hash: str,
 ) -> dict[str, Any]:
-    """Evaluate a single routing history entry and return computed metrics."""
-    model_id = entry.get("id")
-    provider = entry.get("provider", "unknown")
-    model = entry.get("model", "unknown")
-    finish_status = entry.get("finish_status")
-    max_output_tokens = entry.get("max_output_tokens")
-    raw_text = entry.get("response_text") or entry.get("response") or entry.get("text") or ""
+    """Evaluate one route-history row with the shared route evaluator.
 
-    json_str = clean_json(str(raw_text))
-    preclassified = classify_skip_reason(entry, json_str)
-    if preclassified is not None:
+    This function only adapts history-row metadata into the evaluator input.
+    Route parsing, validation, Dijkstra, and metrics stay in
+    research.evaluation.
+    """
+    metadata = get_entry_metadata(entry)
+
+    route_context = get_route_context(entry)
+    if route_context is None:
         return {
+            **metadata,
+            "ssal_hash": ssal_hash,
             "status": "skipped",
-            "reason": preclassified,
-            "model_id": model_id,
-            "provider": provider,
-            "model": model,
-            "finish_status": finish_status,
-            "max_output_tokens": max_output_tokens,
+            "reason": "missing_route_context",
         }
 
-    try:
-        res = json.loads(json_str)
+    response_text = get_response_text(entry)
 
-        path = res.get("path") or res.get("route")
-        origin = str(res.get("origin", "")).strip()
-        destination = str(res.get("destination", "")).strip()
-
-        if not path:
-            return {
-                "status": "skipped",
-                "reason": "missing_path",
-                "model_id": model_id,
-                "provider": provider,
-                "model": model,
-                "finish_status": finish_status,
-                "max_output_tokens": max_output_tokens,
-            }
-
-        if origin not in node_lookup or destination not in node_lookup:
-            return {
-                "status": "skipped",
-                "reason": "missing_node_lookup",
-                "model_id": model_id,
-                "provider": provider,
-                "model": model,
-                "finish_status": finish_status,
-                "max_output_tokens": max_output_tokens,
-                "origin": origin,
-                "destination": destination,
-            }
-
-        locations = [node_lookup[origin], node_lookup[destination]]
-        route = client.directions(locations=locations, profile="driving-car")
-
-        llm_coords = []
-        for step in path:
-            nid = str(step.get("node", "")).strip()
-            if nid in node_lookup:
-                llm_coords.append([float(c) for c in node_lookup[nid]])
-
-        gt_coords = np.array(route.geometry, dtype=float)
-        llm_coords_arr = np.array(llm_coords, dtype=float)
-
-        node_accuracy = 0.0
-        if len(llm_coords_arr) > 0 and len(gt_coords) > 0:
-            min_len = min(len(llm_coords_arr), len(gt_coords))
-            matches = [
-                np.allclose(llm_coords_arr[j], gt_coords[j], atol=1e-4)
-                for j in range(min_len)
-            ]
-            node_accuracy = sum(matches) / max(len(llm_coords_arr), len(gt_coords))
-
-        try:
-            llm_distance = float(res.get("total_length", 0))
-            gt_distance = float(route.distance)
-            dist_precision = (
-                max(0, 1 - (abs(llm_distance - gt_distance) / gt_distance))
-                if gt_distance > 0
-                else 0.0
-            )
-        except (ValueError, TypeError):
-            llm_distance = 0.0
-            gt_distance = float(route.distance)
-            dist_precision = 0.0
-
-        return {
-            "status": "evaluated",
-            "model_id": model_id,
-            "provider": provider,
-            "model": model,
-            "finish_status": finish_status,
-            "max_output_tokens": max_output_tokens,
-            "origin": origin,
-            "destination": destination,
-            "node_accuracy": node_accuracy,
-            "dist_precision": dist_precision,
-            "llm_distance": llm_distance,
-            "gt_distance": gt_distance,
-        }
-
-    except json.JSONDecodeError as e:
-        return {
-            "status": "skipped",
-            "reason": "cropped_json",
-            "model_id": model_id,
-            "provider": provider,
-            "model": model,
-            "finish_status": finish_status,
-            "max_output_tokens": max_output_tokens,
-            "error": str(e),
-        }
-    except Exception as e:
-        return {
-            "status": "skipped",
-            "reason": "other_processing_error",
-            "model_id": model_id,
-            "provider": provider,
-            "model": model,
-            "finish_status": finish_status,
-            "max_output_tokens": max_output_tokens,
-            "error": str(e),
-        }
-
-
-def print_evaluation_result(result: dict[str, Any]) -> None:
-    """Print one evaluated entry."""
-    print(
-        f"\n--- Evaluation for Model ID: {result['model_id']} "
-        f"({result['provider']} / {result['model']}) ---"
+    evaluation = evaluate_route_response(
+        response_text=response_text,
+        graph=graph,
+        origin=route_context["origin"],
+        destination=route_context["destination"],
     )
-    print(f"Route: {result['origin']} -> {result['destination']}")
-    print(
-        f"Finish status: {result.get('finish_status')} | "
-        f"Max output tokens: {result.get('max_output_tokens')}"
+
+    return {
+        **metadata,
+        "origin": route_context["origin"],
+        "destination": route_context["destination"],
+        "ssal_hash": ssal_hash,
+        **evaluation,
+    }
+
+
+def evaluate_entry_file(
+    entry_json_path: str | Path,
+    gpkg_path: str | Path,
+    edges_layer: str,
+    nodes_layer: str,
+) -> dict[str, Any]:
+    """Evaluate one route-history entry JSON file.
+
+    This file-based wrapper loads the network bundle once, then delegates the
+    actual route evaluation to evaluate_route_history_entry().
+    """
+    entry = load_entry(entry_json_path)
+
+    bundle = load_network_bundle_from_gpkg(
+        gpkg_path=gpkg_path,
+        edges_layer=edges_layer,
+        nodes_layer=nodes_layer,
     )
-    print(f"Node Sequence Accuracy: {result['node_accuracy'] * 100:.1f}%")
-    print(f"Distance Precision:    {result['dist_precision'] * 100:.1f}%")
-    print(
-        f"Length Comparison: LLM {result['llm_distance']}m | "
-        f"Algorithm {result['gt_distance']:.1f}m"
+
+    return evaluate_route_history_entry(
+        entry=entry,
+        graph=bundle.graph,
+        ssal_hash=bundle.ssal_hash,
     )
 
 
-def print_skip_result(result: dict[str, Any]) -> None:
-    """Print one skipped entry when it is informative."""
-    reason = result["reason"]
-    model_id = result.get("model_id")
-    provider = result.get("provider", "unknown")
-    model = result.get("model", "unknown")
+def evaluate_history_file(
+    history_json_path: str | Path,
+    gpkg_path: str | Path,
+    edges_layer: str,
+    nodes_layer: str,
+) -> list[dict[str, Any]]:
+    """Evaluate a bulk dashboard history export.
 
-    if reason == "cropped_json":
-        print(
-            f"Skipped Model ID {model_id} ({provider} / {model}): "
-            f"incomplete or cropped JSON response"
+    Bulk mode is only a convenience wrapper around the single-entry evaluator.
+    The network bundle is loaded once and reused for every entry.
+    """
+    history = load_history(history_json_path)
+
+    bundle = load_network_bundle_from_gpkg(
+        gpkg_path=gpkg_path,
+        edges_layer=edges_layer,
+        nodes_layer=nodes_layer,
+    )
+
+    return [
+        evaluate_route_history_entry(
+            entry=entry,
+            graph=bundle.graph,
+            ssal_hash=bundle.ssal_hash,
         )
-    elif reason == "provider_error":
-        print(
-            f"Skipped Model ID {model_id} ({provider} / {model}): "
-            f"provider error with no usable response text"
-        )
+        for entry in history
+    ]
 
 
-def summarize_results(
-    total_entries: int,
-    routing_entries: int,
+def _average(values: list[float]) -> float | None:
+    """Return the mean value, or None when no values are available."""
+    if not values:
+        return None
+
+    return sum(values) / len(values)
+
+
+def _model_key(row: dict[str, Any]) -> str:
+    """Return a stable provider/model grouping key for summaries."""
+    provider = row.get("provider") or "unknown"
+    model = row.get("model") or "unknown"
+    return f"{provider}/{model}"
+
+
+def _route_key(row: dict[str, Any]) -> str:
+    """Return a stable origin/destination grouping key for summaries."""
+    origin = row.get("origin") or "unknown"
+    destination = row.get("destination") or "unknown"
+    return f"{origin}->{destination}"
+
+
+def _group_results_by(
     results: list[dict[str, Any]],
-    model_counts: Counter,
+    key_fn: Callable[[dict[str, Any]], str],
+) -> dict[str, list[dict[str, Any]]]:
+    """Group result rows by a derived summary key."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+
+    for row in results:
+        groups.setdefault(key_fn(row), []).append(row)
+
+    return groups
+
+
+def _summarize_result_group(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize one group of evaluation rows."""
+    evaluated = [row for row in results if row.get("status") == "evaluated"]
+    skipped = [row for row in results if row.get("status") == "skipped"]
+
+    skip_reasons = Counter(row.get("reason") or "unknown" for row in skipped)
+
+    valid_path_values = [
+        1.0 if row.get("valid_path") else 0.0
+        for row in evaluated
+        if "valid_path" in row
+    ]
+
+    relative_errors = [
+        row["relative_length_error"]
+        for row in evaluated
+        if row.get("relative_length_error") is not None
+    ]
+
+    declared_errors = [
+        row["declared_length_relative_error"]
+        for row in evaluated
+        if row.get("declared_length_relative_error") is not None
+    ]
+
+    return {
+        "total_entries": len(results),
+        "evaluated_entries": len(evaluated),
+        "skipped_entries": len(skipped),
+        "skip_reasons": dict(skip_reasons),
+        "valid_path_rate": _average(valid_path_values),
+        "average_relative_length_error": _average(relative_errors),
+        "average_declared_length_relative_error": _average(declared_errors),
+    }
+
+
+def _summarize_groups(
+    groups: dict[str, list[dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    """Summarize grouped evaluation rows with deterministic key ordering."""
+    return {
+        key: _summarize_result_group(rows)
+        for key, rows in sorted(groups.items())
+    }
+
+
+def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return aggregate and grouped summaries for bulk evaluation rows."""
+    summary = _summarize_result_group(results)
+
+    summary["per_model"] = _summarize_groups(
+        _group_results_by(results, _model_key)
+    )
+    summary["per_route"] = _summarize_groups(
+        _group_results_by(results, _route_key)
+    )
+
+    return summary
+
+
+def write_results_json(
+    output_path: str | Path,
+    *,
+    result: dict[str, Any] | None = None,
+    results: list[dict[str, Any]] | None = None,
+    summary: dict[str, Any] | None = None,
 ) -> None:
-    """Print run-level and per-model summary statistics."""
-    evaluated_entries = sum(1 for r in results if r["status"] == "evaluated")
-    skip_counts = Counter(r["reason"] for r in results if r["status"] == "skipped")
+    """Write one-entry or bulk evaluation output as JSON."""
+    has_single_payload = result is not None
+    has_bulk_payload = results is not None or summary is not None
 
-    evaluated_by_model = Counter()
-    skipped_by_model = Counter()
-    results_by_model = defaultdict(list)
+    if has_single_payload == has_bulk_payload:
+        raise ValueError("write_results_json requires exactly one output mode")
 
-    for result in results:
-        model_key = f"{result.get('provider', 'unknown')}:{result.get('model', 'unknown')}"
-        if result["status"] == "evaluated":
-            evaluated_by_model[model_key] += 1
-            results_by_model[model_key].append(result)
-        else:
-            skipped_by_model[model_key] += 1
+    if has_bulk_payload and (results is None or summary is None):
+        raise ValueError("bulk output requires results and summary")
 
-    print("\n--- Run Summary ---")
-    print(f"Total history entries:        {total_entries}")
-    print(f"Routing-related entries:      {routing_entries}")
-    print(f"Successfully evaluated:       {evaluated_entries}")
+    if has_single_payload:
+        payload = {"result": result}
+    else:
+        payload = {
+            "summary": summary,
+            "results": results,
+        }
 
-    for reason, count in sorted(skip_counts.items()):
-        print(f"Skipped ({reason}):".ljust(30) + f"{count}")
-
-    print("\n--- Per Model Summary ---")
-    for model_key in sorted(model_counts.keys()):
-        evaluated = evaluated_by_model.get(model_key, 0)
-        skipped = skipped_by_model.get(model_key, 0)
-        print(model_key)
-        print(f"  total seen:   {model_counts[model_key]}")
-        print(f"  evaluated:    {evaluated}")
-        print(f"  skipped:      {skipped}")
-
-        model_results = results_by_model.get(model_key, [])
-        if model_results:
-            avg_node = sum(r["node_accuracy"] for r in model_results) / len(model_results)
-            avg_dist = sum(r["dist_precision"] for r in model_results) / len(model_results)
-            print(f"  avg node accuracy:   {avg_node * 100:.1f}%")
-            print(f"  avg distance prec.:  {avg_dist * 100:.1f}%")
-
-
-def parse_args() -> argparse.Namespace:
-    """Parse CLI arguments."""
-    parser = argparse.ArgumentParser(
-        description="Evaluate routing-model outputs from dashboard export history."
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
     )
-    parser.add_argument(
-        "--gpkg-path",
-        default=os.getenv("GPKG_PATH", DEFAULT_GPKG_PATH),
-        help="Path to GeoPackage file "
-             f"(default: env GPKG_PATH or {DEFAULT_GPKG_PATH})",
-    )
-    parser.add_argument(
-        "--history-json",
-        default=os.getenv("HISTORY_JSON", DEFAULT_HISTORY_JSON),
-        help="Path to exported history JSON "
-             f"(default: env HISTORY_JSON or {DEFAULT_HISTORY_JSON})",
-    )
-    parser.add_argument(
-        "--nodes-layer",
-        default=os.getenv("NODES_LAYER", DEFAULT_NODES_LAYER),
-        help="GeoPackage layer name for nodes "
-             f"(default: env NODES_LAYER or {DEFAULT_NODES_LAYER})",
-    )
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-
-    ors_api_key = os.getenv("ORS_API_KEY")
-    if not ors_api_key:
-        raise RuntimeError("Missing ORS_API_KEY environment variable")
-
-    client = ORS(api_key=ors_api_key)
-
-    print("Step 1: Loading network data...")
-    try:
-        node_lookup = load_node_lookup(args.gpkg_path, args.nodes_layer)
-        print(f"Status: Successfully loaded {len(node_lookup)} nodes.")
-    except Exception as e:
-        print(f"Critical Error: Failed to load GeoPackage. {e}")
-        return
-
-    print("\nStep 2: Processing model history...")
-    try:
-        history = load_history(args.history_json)
-    except Exception as e:
-        print(f"Critical Error: Failed to load history file. {e}")
-        return
-
-    total_entries = 0
-    routing_entries = 0
-    results: list[dict[str, Any]] = []
-    model_counts = Counter()
-
-    for i, entry in enumerate(history):
-        total_entries += 1
-        provider = entry.get("provider", "unknown")
-        model = entry.get("model", "unknown")
-        model_key = f"{provider}:{model}"
-        model_counts[model_key] += 1
-
-        prompt = entry.get("prompt") or ""
-        if not looks_like_routing_prompt(prompt):
-            results.append(
-                {
-                    "status": "skipped",
-                    "reason": "non_routing_entry",
-                    "model_id": entry.get("id", i),
-                    "provider": provider,
-                    "model": model,
-                }
-            )
-            continue
-
-        routing_entries += 1
-        result = evaluate_entry(entry, node_lookup, client)
-        results.append(result)
-
-        if result["status"] == "evaluated":
-            print_evaluation_result(result)
-        else:
-            print_skip_result(result)
-
-    summarize_results(total_entries, routing_entries, results, model_counts)
-
-
-if __name__ == "__main__":
-    main()
