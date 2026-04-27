@@ -7,7 +7,12 @@ the shared route evaluator or network loader in detail.
 import json
 from pathlib import Path
 
-from scripts.evaluate_history import load_entry, load_history, get_response_text
+from scripts.evaluate_history import (
+	load_entry,
+	load_history,
+	get_response_text,
+	get_entry_metadata,
+)
 
 import pytest
 
@@ -102,3 +107,60 @@ def test_get_response_text_converts_non_string_value_to_string():
     entry = {"response_text": 123}
 
     assert get_response_text(entry) == "123"
+
+
+def test_get_entry_metadata_normalizes_raw_id_to_entry_id():
+    """Raw dashboard id should be preserved under the output key entry_id."""
+    entry = {
+        "id": "entry-1",
+        "provider": "openai",
+        "model": "gpt-test",
+        "finish_status": "completed",
+        "max_output_tokens": 4096,
+    }
+
+    assert get_entry_metadata(entry) == {
+        "entry_id": "entry-1",
+        "provider": "openai",
+        "model": "gpt-test",
+        "finish_status": "completed",
+        "max_output_tokens": 4096,
+    }
+
+
+def test_get_entry_metadata_uses_entry_id_fallback_when_raw_id_is_missing():
+    """Already-normalized entry_id should be kept when raw id is unavailable."""
+    entry = {
+        "entry_id": "entry-2",
+        "provider": "google",
+        "model": "gemini-test",
+    }
+
+    assert get_entry_metadata(entry) == {
+        "entry_id": "entry-2",
+        "provider": "google",
+        "model": "gemini-test",
+        "finish_status": None,
+        "max_output_tokens": None,
+    }
+
+
+def test_get_entry_metadata_prefers_raw_id_over_entry_id():
+    """Raw dashboard id should win if both id and entry_id are present."""
+    entry = {
+        "id": "raw-entry-id",
+        "entry_id": "processed-entry-id",
+    }
+
+    assert get_entry_metadata(entry)["entry_id"] == "raw-entry-id"
+
+
+def test_get_entry_metadata_uses_defaults_for_missing_fields():
+    """Missing metadata should use stable defaults for summary grouping."""
+    assert get_entry_metadata({}) == {
+        "entry_id": None,
+        "provider": "unknown",
+        "model": "unknown",
+        "finish_status": None,
+        "max_output_tokens": None,
+    }

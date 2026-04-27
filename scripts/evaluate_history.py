@@ -42,3 +42,14 @@ def get_response_text(entry: dict[str, Any]) -> str:
     """Return model response text from known history export fields."""
     value = entry.get("response_text") or entry.get("response") or entry.get("text") or ""
     return str(value)
+
+
+def get_entry_metadata(entry: dict[str, Any]) -> dict[str, Any]:
+    """Return history metadata that should be preserved in output rows."""
+    return {
+        "entry_id": entry.get("id", entry.get("entry_id")),
+        "provider": entry.get("provider", "unknown"),
+        "model": entry.get("model", "unknown"),
+        "finish_status": entry.get("finish_status"),
+        "max_output_tokens": entry.get("max_output_tokens"),
+    }
