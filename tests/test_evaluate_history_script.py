@@ -1,27 +1,53 @@
 """Tests for the offline route-history evaluation script.
 
-These tests cover script-level wrapper behavior only. They should not re-test
-the shared route evaluator or network loader in detail.
+These tests cover script-level wrapper behavior. The detailed route parsing,
+path validation, Dijkstra comparison, and metric calculations are tested in
+``research.evaluation``.
 """
 
 import json
-from pathlib import Path
-
-from scripts.evaluate_history import (
-	load_entry,
-	load_history,
-	get_response_text,
-	get_entry_metadata,
-	get_route_context,
-)
 
 import pytest
+
+from research.graph import Graph, build_graph_from_ssal
+from scripts.evaluate_history import (
+    evaluate_route_history_entry,
+    get_entry_metadata,
+    get_response_text,
+    get_route_context,
+    load_entry,
+    load_history,
+)
+
+
+# ---------------------------------------------------------------------------
+# Test fixtures
+# ---------------------------------------------------------------------------
+
+
+SIMPLE_SSAL = """
+A:
+  B {1.0, Road AB, 2w}
+B:
+  C {1.0, Road BC, 2w}
+C:
+""".strip()
+
+
+# ---------------------------------------------------------------------------
+# Module import
+# ---------------------------------------------------------------------------
 
 
 def test_evaluate_history_script_can_be_imported():
     import scripts.evaluate_history
 
     assert scripts.evaluate_history is not None
+
+
+# ---------------------------------------------------------------------------
+# Single-entry JSON loading
+# ---------------------------------------------------------------------------
 
 
 def test_load_entry_loads_single_entry_json(tmp_path):
@@ -44,6 +70,11 @@ def test_load_entry_rejects_non_object_json(tmp_path):
 
     with pytest.raises(ValueError, match="Entry JSON must contain one object"):
         load_entry(entry_path)
+
+
+# ---------------------------------------------------------------------------
+# Bulk history JSON loading
+# ---------------------------------------------------------------------------
 
 
 def test_load_history_loads_bulk_history_json(tmp_path):
@@ -73,6 +104,11 @@ def test_load_history_rejects_non_object_entries(tmp_path):
 
     with pytest.raises(ValueError, match="History JSON entries must be objects"):
         load_history(history_path)
+
+
+# ---------------------------------------------------------------------------
+# Response text extraction
+# ---------------------------------------------------------------------------
 
 
 def test_get_response_text_prefers_response_text():
@@ -108,6 +144,11 @@ def test_get_response_text_converts_non_string_value_to_string():
     entry = {"response_text": 123}
 
     assert get_response_text(entry) == "123"
+
+
+# ---------------------------------------------------------------------------
+# Entry metadata extraction
+# ---------------------------------------------------------------------------
 
 
 def test_get_entry_metadata_normalizes_raw_id_to_entry_id():
@@ -165,6 +206,11 @@ def test_get_entry_metadata_uses_defaults_for_missing_fields():
         "finish_status": None,
         "max_output_tokens": None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Route context extraction
+# ---------------------------------------------------------------------------
 
 
 def test_get_route_context_reads_origin_and_destination_fields():
@@ -231,3 +277,79 @@ def test_get_route_context_returns_none_when_destination_is_missing():
 
 def test_get_route_context_returns_none_when_both_are_missing():
     assert get_route_context({}) is None
+
+
+# ---------------------------------------------------------------------------
+# Single-entry route evaluation
+# ---------------------------------------------------------------------------
+
+
+def test_evaluate_route_history_entry_evaluates_one_valid_entry():
+    """One route-history row should be evaluated with the shared evaluator."""
+    graph = build_graph_from_ssal(SIMPLE_SSAL)
+
+    entry = {
+        "id": "entry-1",
+        "provider": "openai",
+        "model": "gpt-test",
+        "origin": "A",
+        "destination": "C",
+        "response_text": """
+{
+  "origin": "A",
+  "destination": "C",
+  "total_length": 2.0,
+  "route": [
+    {"node": "A", "edge_name": "start"},
+    {"node": "B", "edge_name": "Road AB"},
+    {"node": "C", "edge_name": "Road BC"}
+  ],
+  "status": "success"
+}
+""",
+    }
+
+    result = evaluate_route_history_entry(
+        entry=entry,
+        graph=graph,
+        ssal_hash="hash123",
+    )
+
+    assert result["entry_id"] == "entry-1"
+    assert result["provider"] == "openai"
+    assert result["model"] == "gpt-test"
+    assert result["origin"] == "A"
+    assert result["destination"] == "C"
+    assert result["ssal_hash"] == "hash123"
+
+    assert result["status"] == "evaluated"
+    assert result["valid_json"] is True
+    assert result["valid_path"] is True
+    assert result["candidate_path"] == ["A", "B", "C"]
+    assert result["candidate_computed_length"] == 2.0
+    assert result["ground_truth_path"] == ["A", "B", "C"]
+    assert result["ground_truth_length"] == 2.0
+    assert result["exact_path_match"] is True
+
+
+def test_evaluate_route_history_entry_skips_missing_route_context():
+    """Entries without origin/destination should be skipped before evaluation."""
+    entry = {
+        "id": "entry-1",
+        "provider": "openai",
+        "model": "gpt-test",
+        "response_text": "{}",
+    }
+
+    result = evaluate_route_history_entry(
+        entry=entry,
+        graph=Graph(adjacency={}),
+        ssal_hash="hash123",
+    )
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "missing_route_context"
+    assert result["entry_id"] == "entry-1"
+    assert result["provider"] == "openai"
+    assert result["model"] == "gpt-test"
+    assert result["ssal_hash"] == "hash123"
