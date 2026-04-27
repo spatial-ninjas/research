@@ -53,3 +53,26 @@ def get_entry_metadata(entry: dict[str, Any]) -> dict[str, Any]:
         "finish_status": entry.get("finish_status"),
         "max_output_tokens": entry.get("max_output_tokens"),
     }
+
+
+def get_route_context(entry: dict[str, Any]) -> dict[str, str] | None:
+    """Return origin/destination from explicit route metadata.
+
+    Prompt parsing is intentionally avoided here so the script does not become
+    another route parser. Older exports without route metadata should be skipped
+    or handled by a separate compatibility helper later.
+    """
+    origin = entry.get("origin")
+    destination = entry.get("destination")
+
+    if origin is None or destination is None:
+        origin = entry.get("route_origin")
+        destination = entry.get("route_destination")
+
+    if origin is None or destination is None:
+        return None
+
+    return {
+        "origin": str(origin),
+        "destination": str(destination),
+    }

@@ -12,6 +12,7 @@ from scripts.evaluate_history import (
 	load_history,
 	get_response_text,
 	get_entry_metadata,
+	get_route_context,
 )
 
 import pytest
@@ -164,3 +165,69 @@ def test_get_entry_metadata_uses_defaults_for_missing_fields():
         "finish_status": None,
         "max_output_tokens": None,
     }
+
+
+def test_get_route_context_reads_origin_and_destination_fields():
+    entry = {
+        "origin": "A",
+        "destination": "D",
+    }
+
+    assert get_route_context(entry) == {
+        "origin": "A",
+        "destination": "D",
+    }
+
+
+def test_get_route_context_converts_node_ids_to_strings():
+    entry = {
+        "origin": 101,
+        "destination": 202,
+    }
+
+    assert get_route_context(entry) == {
+        "origin": "101",
+        "destination": "202",
+    }
+
+
+def test_get_route_context_reads_route_origin_and_route_destination_fields():
+    entry = {
+        "route_origin": "A",
+        "route_destination": "D",
+    }
+
+    assert get_route_context(entry) == {
+        "origin": "A",
+        "destination": "D",
+    }
+
+
+def test_get_route_context_prefers_origin_destination_over_route_fields():
+    entry = {
+        "origin": "A",
+        "destination": "D",
+        "route_origin": "X",
+        "route_destination": "Y",
+    }
+
+    assert get_route_context(entry) == {
+        "origin": "A",
+        "destination": "D",
+    }
+
+
+def test_get_route_context_returns_none_when_origin_is_missing():
+    entry = {"destination": "D"}
+
+    assert get_route_context(entry) is None
+
+
+def test_get_route_context_returns_none_when_destination_is_missing():
+    entry = {"origin": "A"}
+
+    assert get_route_context(entry) is None
+
+
+def test_get_route_context_returns_none_when_both_are_missing():
+    assert get_route_context({}) is None
