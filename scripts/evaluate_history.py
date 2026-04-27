@@ -291,3 +291,36 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     )
 
     return summary
+
+
+def write_results_json(
+    output_path: str | Path,
+    *,
+    result: dict[str, Any] | None = None,
+    results: list[dict[str, Any]] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> None:
+    """Write one-entry or bulk evaluation output as JSON."""
+    has_single_payload = result is not None
+    has_bulk_payload = results is not None or summary is not None
+
+    if has_single_payload == has_bulk_payload:
+        raise ValueError("write_results_json requires exactly one output mode")
+
+    if has_bulk_payload and (results is None or summary is None):
+        raise ValueError("bulk output requires results and summary")
+
+    if has_single_payload:
+        payload = {"result": result}
+    else:
+        payload = {
+            "summary": summary,
+            "results": results,
+        }
+
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )

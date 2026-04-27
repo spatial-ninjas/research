@@ -21,6 +21,7 @@ from scripts.evaluate_history import (
     load_entry,
     load_history,
     summarize_results,
+    write_results_json,
 )
 
 
@@ -788,3 +789,119 @@ def test_summarize_results_includes_per_route_counts():
             "average_declared_length_relative_error": None,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# JSON output writing
+# ---------------------------------------------------------------------------
+
+
+def test_write_results_json_writes_single_result(tmp_path):
+    """Single-entry output should be wrapped under result."""
+    output_path = tmp_path / "result.json"
+    result = {
+        "entry_id": "entry-1",
+        "status": "evaluated",
+        "valid_path": True,
+    }
+
+    write_results_json(output_path, result=result)
+
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert written == {
+        "result": result,
+    }
+
+
+def test_write_results_json_writes_summary_and_results(tmp_path):
+    """Bulk output should include summary and row-level results."""
+    output_path = tmp_path / "results.json"
+    results = [
+        {
+            "entry_id": "entry-1",
+            "status": "evaluated",
+        }
+    ]
+    summary = {
+        "total_entries": 1,
+        "evaluated_entries": 1,
+        "skipped_entries": 0,
+        "skip_reasons": {},
+        "valid_path_rate": 1.0,
+        "average_relative_length_error": 0.0,
+        "average_declared_length_relative_error": None,
+        "per_model": {
+            "openai/gpt": {
+                "total_entries": 1,
+                "evaluated_entries": 1,
+                "skipped_entries": 0,
+                "skip_reasons": {},
+                "valid_path_rate": 1.0,
+                "average_relative_length_error": 0.0,
+                "average_declared_length_relative_error": None,
+            }
+        },
+        "per_route": {
+            "A->C": {
+                "total_entries": 1,
+                "evaluated_entries": 1,
+                "skipped_entries": 0,
+                "skip_reasons": {},
+                "valid_path_rate": 1.0,
+                "average_relative_length_error": 0.0,
+                "average_declared_length_relative_error": None,
+            }
+        },
+    }
+
+    write_results_json(output_path, results=results, summary=summary)
+
+    written = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert written == {
+        "summary": summary,
+        "results": results,
+    }
+
+
+def test_write_results_json_creates_parent_directories(tmp_path):
+    """Output writing should create missing parent directories."""
+    output_path = tmp_path / "nested" / "outputs" / "result.json"
+    result = {"status": "evaluated"}
+
+    write_results_json(output_path, result=result)
+
+    assert output_path.exists()
+
+
+def test_write_results_json_rejects_missing_payload(tmp_path):
+    """Output writing should require either single or bulk payload data."""
+    output_path = tmp_path / "result.json"
+
+    with pytest.raises(ValueError, match="exactly one output mode"):
+        write_results_json(output_path)
+
+
+def test_write_results_json_rejects_mixed_single_and_bulk_payloads(tmp_path):
+    """Output writing should not mix single-entry and bulk payloads."""
+    output_path = tmp_path / "result.json"
+
+    with pytest.raises(ValueError, match="exactly one output mode"):
+        write_results_json(
+            output_path,
+            result={"status": "evaluated"},
+            results=[{"status": "evaluated"}],
+            summary={"total_entries": 1},
+        )
+
+
+def test_write_results_json_rejects_incomplete_bulk_payload(tmp_path):
+    """Bulk output should include both results and summary."""
+    output_path = tmp_path / "results.json"
+
+    with pytest.raises(ValueError, match="bulk output requires results and summary"):
+        write_results_json(
+            output_path,
+            results=[{"status": "evaluated"}],
+        )
