@@ -1,14 +1,14 @@
 """Tests for network bundle loading utilities.
 
-This module currently covers the first small slices of ``research.network_loader``:
+This module currently covers the first small slices of research.network_loader:
 
 - module import
-- SSAL text hashing with ``sha256_text()``
-- local file hashing with ``sha256_file()``
-- ``NetworkBundle`` storage and immutability
+- SSAL text hashing with sha256_text()
+- local file hashing with sha256_file()
+- NetworkBundle storage and immutability
 
 GeoPackage-to-SSAL loading tests should be added later once
-``load_network_bundle_from_gpkg()`` is implemented.
+load_network_bundle_from_gpkg() is implemented.
 """
 
 import hashlib
@@ -17,7 +17,22 @@ from pathlib import Path
 import pytest
 
 from research.graph import Graph
-from research.network_loader import NetworkBundle, sha256_file, sha256_text
+from research.network_loader import (
+    DEFAULT_INCLUDE_ATTRS,
+    NetworkBundle,
+    load_network_bundle_from_gpkg,
+    sha256_file,
+    sha256_text,
+)
+
+
+MOCK_SSAL = """
+A:
+  B {1.0, Road AB, 2w}
+B:
+  C {2.0, Road BC, 1w}
+C:
+""".strip()
 
 
 # ---------------------------------------------------------------------------
@@ -136,3 +151,163 @@ def test_network_bundle_is_frozen():
 
     with pytest.raises(Exception):
         bundle.ssal_hash = "changed"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Default SSAL loading options
+# ---------------------------------------------------------------------------
+
+
+def test_default_include_attrs_contains_routing_and_debug_fields():
+    """Default SSAL fields should support routing, debugging, and display."""
+    assert DEFAULT_INCLUDE_ATTRS == [
+        "length",
+        "name",
+        "oneway",
+        "from_x",
+        "from_y",
+        "to_x",
+        "to_y",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Local GeoPackage bundle loading
+# ---------------------------------------------------------------------------
+
+
+def test_load_network_bundle_from_gpkg_returns_complete_bundle(
+    monkeypatch,
+    tmp_path,
+):
+    """Local loader should return SSAL, graph, hash, path, and layer metadata."""
+    gpkg_path = tmp_path / "network.gpkg"
+
+    def fake_gpkg_to_ssal(**kwargs):
+        return MOCK_SSAL
+
+    monkeypatch.setattr(
+        "research.network_loader.gpkg_to_ssal",
+        fake_gpkg_to_ssal,
+    )
+
+    bundle = load_network_bundle_from_gpkg(
+        gpkg_path=gpkg_path,
+        edges_layer="edges",
+        nodes_layer="nodes",
+    )
+
+    assert isinstance(bundle, NetworkBundle)
+    assert bundle.gpkg_path == gpkg_path
+    assert bundle.edges_layer == "edges"
+    assert bundle.nodes_layer == "nodes"
+    assert bundle.ssal_text == MOCK_SSAL
+    assert bundle.ssal_hash == sha256_text(MOCK_SSAL)
+    assert bundle.graph.has_edge("A", "B")
+    assert bundle.graph.has_edge("B", "C")
+
+
+def test_load_network_bundle_from_gpkg_passes_default_options(
+    monkeypatch,
+    tmp_path,
+):
+    """Default loader options should be passed through to SSAL generation."""
+    captured = {}
+
+    def fake_gpkg_to_ssal(**kwargs):
+        captured.update(kwargs)
+        return MOCK_SSAL
+
+    monkeypatch.setattr(
+        "research.network_loader.gpkg_to_ssal",
+        fake_gpkg_to_ssal,
+    )
+
+    gpkg_path = tmp_path / "network.gpkg"
+
+    load_network_bundle_from_gpkg(
+        gpkg_path=gpkg_path,
+        edges_layer="edges",
+        nodes_layer="nodes",
+    )
+
+    assert captured == {
+        "gpkg_path": str(gpkg_path),
+        "edges_layer": "edges",
+        "nodes_layer": "nodes",
+        "include_coords": True,
+        "include_direction": False,
+        "include_attrs": DEFAULT_INCLUDE_ATTRS,
+    }
+
+
+def test_load_network_bundle_from_gpkg_passes_custom_options(
+    monkeypatch,
+    tmp_path,
+):
+    """Custom SSAL options should override loader defaults."""
+    captured = {}
+
+    def fake_gpkg_to_ssal(**kwargs):
+        captured.update(kwargs)
+        return MOCK_SSAL
+
+    monkeypatch.setattr(
+        "research.network_loader.gpkg_to_ssal",
+        fake_gpkg_to_ssal,
+    )
+
+    gpkg_path = tmp_path / "network.gpkg"
+    include_attrs = ["length", "name", "dir"]
+
+    load_network_bundle_from_gpkg(
+        gpkg_path=gpkg_path,
+        edges_layer="custom_edges",
+        nodes_layer="custom_nodes",
+        include_coords=False,
+        include_direction=True,
+        include_attrs=include_attrs,
+    )
+
+    assert captured == {
+        "gpkg_path": str(gpkg_path),
+        "edges_layer": "custom_edges",
+        "nodes_layer": "custom_nodes",
+        "include_coords": False,
+        "include_direction": True,
+        "include_attrs": include_attrs,
+    }
+
+
+def test_load_network_bundle_from_gpkg_builds_graph_from_generated_ssal(
+    monkeypatch,
+    tmp_path,
+):
+    """The bundle graph should be parsed from the generated SSAL text."""
+    generated_ssal = """
+X:
+  Y {7.5, Test Road, 2w}
+Y:
+""".strip()
+
+    def fake_gpkg_to_ssal(**kwargs):
+        return generated_ssal
+
+    monkeypatch.setattr(
+        "research.network_loader.gpkg_to_ssal",
+        fake_gpkg_to_ssal,
+    )
+
+    bundle = load_network_bundle_from_gpkg(
+        gpkg_path=tmp_path / "network.gpkg",
+        edges_layer="edges",
+        nodes_layer="nodes",
+    )
+
+    assert bundle.ssal_text == generated_ssal
+    assert bundle.ssal_hash == sha256_text(generated_ssal)
+    assert bundle.graph.has_node("X")
+    assert bundle.graph.has_node("Y")
+    assert bundle.graph.has_edge("X", "Y")
+    assert bundle.graph.path_length(["X", "Y"]) == 7.5
+    

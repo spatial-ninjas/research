@@ -1,15 +1,14 @@
 """Network bundle loading utilities.
 
-This module groups the route-network artifacts that must stay aligned during
-prompting and evaluation:
+This module loads a GeoPackage-derived route network into the artifacts that
+must stay aligned during prompting and evaluation:
 
 - SSAL text shown to the LLM
 - graph parsed from that exact SSAL text
 - stable hash of the SSAL text
 - source GeoPackage and layer metadata
 
-Only the hashing utilities and NetworkBundle container are implemented so
-far. The GeoPackage-to-SSAL loading function is added in the next slice.
+The main entry point is load_network_bundle_from_gpkg().
 """
 
 from __future__ import annotations
@@ -18,7 +17,21 @@ from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 
-from research.graph import Graph
+from research.graph import Graph, build_graph_from_ssal
+from research.ssal import gpkg_to_ssal
+
+
+# These fields keep the generated SSAL usable for route weighting, street-name
+# display/debugging, and later coordinate-based visualization.
+DEFAULT_INCLUDE_ATTRS = [
+    "length",
+    "name",
+    "oneway",
+    "from_x",
+    "from_y",
+    "to_x",
+    "to_y",
+]
 
 
 @dataclass(frozen=True)
@@ -62,3 +75,43 @@ def sha256_file(path: str | Path) -> str:
             digest.update(chunk)
 
     return digest.hexdigest()
+
+
+def load_network_bundle_from_gpkg(
+    gpkg_path: str | Path,
+    edges_layer: str,
+    nodes_layer: str,
+    include_coords: bool = True,
+    include_direction: bool = False,
+    include_attrs: list[str] | None = None,
+) -> NetworkBundle:
+    """Load SSAL text, graph, and SSAL hash from a local GeoPackage.
+
+    The graph is intentionally built from the generated SSAL text, not directly
+    from the GeoPackage. This keeps the evaluator aligned with the exact network
+    representation shown to the LLM.
+    """
+    gpkg_path = Path(gpkg_path)
+
+    if include_attrs is None:
+        include_attrs = DEFAULT_INCLUDE_ATTRS
+
+    ssal_text = gpkg_to_ssal(
+        gpkg_path=str(gpkg_path),
+        edges_layer=edges_layer,
+        nodes_layer=nodes_layer,
+        include_coords=include_coords,
+        include_direction=include_direction,
+        include_attrs=include_attrs,
+    )
+
+    graph = build_graph_from_ssal(ssal_text)
+
+    return NetworkBundle(
+        gpkg_path=gpkg_path,
+        ssal_text=ssal_text,
+        ssal_hash=sha256_text(ssal_text),
+        graph=graph,
+        edges_layer=edges_layer,
+        nodes_layer=nodes_layer,
+    )
