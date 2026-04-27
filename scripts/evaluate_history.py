@@ -36,3 +36,9 @@ def load_history(history_json_path: str | Path) -> list[dict[str, Any]]:
         raise ValueError("History JSON entries must be objects")
 
     return data
+
+
+def get_response_text(entry: dict[str, Any]) -> str:
+    """Return model response text from known history export fields."""
+    value = entry.get("response_text") or entry.get("response") or entry.get("text") or ""
+    return str(value)

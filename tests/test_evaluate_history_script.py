@@ -7,7 +7,7 @@ the shared route evaluator or network loader in detail.
 import json
 from pathlib import Path
 
-from scripts.evaluate_history import load_entry, load_history
+from scripts.evaluate_history import load_entry, load_history, get_response_text
 
 import pytest
 
@@ -67,3 +67,38 @@ def test_load_history_rejects_non_object_entries(tmp_path):
 
     with pytest.raises(ValueError, match="History JSON entries must be objects"):
         load_history(history_path)
+
+
+def test_get_response_text_prefers_response_text():
+    entry = {
+        "response_text": "from response_text",
+        "response": "from response",
+        "text": "from text",
+    }
+
+    assert get_response_text(entry) == "from response_text"
+
+
+def test_get_response_text_falls_back_to_response():
+    entry = {
+        "response": "from response",
+        "text": "from text",
+    }
+
+    assert get_response_text(entry) == "from response"
+
+
+def test_get_response_text_falls_back_to_text():
+    entry = {"text": "from text"}
+
+    assert get_response_text(entry) == "from text"
+
+
+def test_get_response_text_returns_empty_string_when_missing():
+    assert get_response_text({}) == ""
+
+
+def test_get_response_text_converts_non_string_value_to_string():
+    entry = {"response_text": 123}
+
+    assert get_response_text(entry) == "123"
