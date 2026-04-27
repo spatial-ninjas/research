@@ -2,7 +2,7 @@
 
 Research workspace for evaluating LLM routing behavior on a simplified street-network representation of Southern Helsinki.
 
-This repository contains the **research and evaluation side** of the project: routing-network inputs, stable SSAL artifacts, exported experiment inputs, and analysis scripts. The broader project compares GPT-family and Gemini-family models on routing tasks over an OpenStreetMap-derived Helsinki network, using [Routingpy](https://routingpy.readthedocs.io/en/latest/) as the reference baseline.
+This repository contains the **research and evaluation side** of the project: routing-network inputs, stable SSAL artifacts, exported experiment inputs, and analysis scripts. The broader project compares GPT-family and Gemini-family models on routing tasks over an OpenStreetMap-derived Helsinki network, using a shared SSAL-native evaluator with Dijkstra ground truth over the generated graph representation.
 
 ## Relationship to [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard)
 
@@ -93,9 +93,8 @@ from research.ssal import gpkg_to_ssal
 Create a repo-root `.env` file:
 
 ```dotenv
-ORS_API_KEY=your_ors_api_key_here
 GPKG_PATH=data/raw/routing_networks/osm_southern_helsinki_slimmed_cropped.gpkg
-HISTORY_JSON=data/raw/llm_history_exports/llm_compare_history_2026-04-20.json
+EDGES_LAYER=slimmed_cropped_edges
 NODES_LAYER=slimmed_cropped_nodes
 ```
 
@@ -161,7 +160,9 @@ python scripts/build_ssal.py
 Evaluate the default exported history:
 
 ```bash
-python scripts/evaluate_history.py
+python scripts/evaluate_history.py \
+  --history-json data/raw/llm_history_exports/llm_compare_history_2026-04-20.json \
+  --output results.json
 ```
 
 Show script options:
@@ -186,7 +187,7 @@ Detailed chronology and test-by-test notes are kept in the supporting docs, summ
 
 ## Evaluation note
 
-The current route evaluator uses an approximate exploratory node-sequence comparison between LLM-produced node paths and OpenRouteService route geometry. This is useful for rough comparison, but it is not yet a fully graph-native path-equivalence metric.
+The current route evaluator is SSAL-native. It validates LLM-produced node paths against the SSAL-derived graph, recomputes candidate route length from graph edges, and compares the candidate route against Dijkstra ground truth. The default offline evaluator no longer requires ORS, routingpy, OpenRouteService, or `ORS_API_KEY`.
 
 ## See also
 

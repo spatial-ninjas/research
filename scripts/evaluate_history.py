@@ -1,8 +1,8 @@
-"""Thin wrappers for offline route-history evaluation.
+"""Offline route-history evaluation wrappers and CLI.
 
 This module adapts dashboard history entries into calls to the shared
-SSAL-native evaluator. It should handle file loading, metadata preservation,
-network-bundle loading, and output shaping only.
+SSAL-native evaluator. It handles file loading, metadata preservation,
+network-bundle loading, summary aggregation, JSON output, and CLI wiring.
 
 Route parsing, graph validation, Dijkstra ground truth, and metric computation
 belong in research.evaluation.
@@ -10,15 +10,27 @@ belong in research.evaluation.
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
+import sys
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from research.evaluation import evaluate_route_response
 from research.graph import Graph
 from research.network_loader import load_network_bundle_from_gpkg
+
+
+DEFAULT_GPKG_PATH = "data/raw/routing_networks/osm_southern_helsinki_slimmed_cropped.gpkg"
+DEFAULT_EDGES_LAYER = "slimmed_cropped_edges"
+DEFAULT_NODES_LAYER = "slimmed_cropped_nodes"
 
 
 def load_entry(entry_json_path: str | Path) -> dict[str, Any]:
@@ -293,6 +305,47 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
+def _build_output_payload(
+    *,
+    result: dict[str, Any] | None = None,
+    results: list[dict[str, Any]] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the JSON-serializable payload for single or bulk output."""
+    has_single_payload = result is not None
+    has_bulk_payload = results is not None or summary is not None
+
+    if has_single_payload == has_bulk_payload:
+        raise ValueError("output requires exactly one output mode")
+
+    if has_bulk_payload and (results is None or summary is None):
+        raise ValueError("bulk output requires results and summary")
+
+    if has_single_payload:
+        return {"result": result}
+
+    return {
+        "summary": summary,
+        "results": results,
+    }
+
+
+def format_results_json(
+    *,
+    result: dict[str, Any] | None = None,
+    results: list[dict[str, Any]] | None = None,
+    summary: dict[str, Any] | None = None,
+) -> str:
+    """Serialize one-entry or bulk evaluation output as pretty JSON text."""
+    payload = _build_output_payload(
+        result=result,
+        results=results,
+        summary=summary,
+    )
+
+    return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
 def write_results_json(
     output_path: str | Path,
     *,
@@ -300,27 +353,105 @@ def write_results_json(
     results: list[dict[str, Any]] | None = None,
     summary: dict[str, Any] | None = None,
 ) -> None:
-    """Write one-entry or bulk evaluation output as JSON."""
-    has_single_payload = result is not None
-    has_bulk_payload = results is not None or summary is not None
-
-    if has_single_payload == has_bulk_payload:
-        raise ValueError("write_results_json requires exactly one output mode")
-
-    if has_bulk_payload and (results is None or summary is None):
-        raise ValueError("bulk output requires results and summary")
-
-    if has_single_payload:
-        payload = {"result": result}
-    else:
-        payload = {
-            "summary": summary,
-            "results": results,
-        }
-
+    """Write serialized one-entry or bulk evaluation output to a JSON file."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
+
+    text = format_results_json(
+        result=result,
+        results=results,
+        summary=summary,
     )
+
+    path.write_text(f"{text}\n", encoding="utf-8")
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse CLI arguments without running evaluation."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Evaluate route-history entries with the shared "
+            "SSAL-native evaluator."
+        )
+    )
+
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument(
+        "--entry-json",
+        help="Path to a JSON file containing one route history entry.",
+    )
+    input_group.add_argument(
+        "--history-json",
+        help="Path to a JSON file containing a bulk route history export.",
+    )
+
+    parser.add_argument(
+        "--gpkg-path",
+        default=os.getenv("GPKG_PATH", DEFAULT_GPKG_PATH),
+        help=(
+            "Path to GeoPackage file "
+            f"(default: env GPKG_PATH or {DEFAULT_GPKG_PATH})."
+        ),
+    )
+    parser.add_argument(
+        "--edges-layer",
+        default=os.getenv("EDGES_LAYER", DEFAULT_EDGES_LAYER),
+        help=(
+            "GeoPackage edge layer "
+            f"(default: env EDGES_LAYER or {DEFAULT_EDGES_LAYER})."
+        ),
+    )
+    parser.add_argument(
+        "--nodes-layer",
+        default=os.getenv("NODES_LAYER", DEFAULT_NODES_LAYER),
+        help=(
+            "GeoPackage node layer "
+            f"(default: env NODES_LAYER or {DEFAULT_NODES_LAYER})."
+        ),
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Optional output JSON path.",
+    )
+
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the offline evaluation CLI and return a process exit code."""
+    args = parse_args(argv)
+
+    if args.entry_json is not None:
+        result = evaluate_entry_file(
+            entry_json_path=args.entry_json,
+            gpkg_path=args.gpkg_path,
+            edges_layer=args.edges_layer,
+            nodes_layer=args.nodes_layer,
+        )
+
+        if args.output:
+            write_results_json(args.output, result=result)
+        else:
+            print(format_results_json(result=result))
+
+        return 0
+
+    rows = evaluate_history_file(
+        history_json_path=args.history_json,
+        gpkg_path=args.gpkg_path,
+        edges_layer=args.edges_layer,
+        nodes_layer=args.nodes_layer,
+    )
+    summary = summarize_results(rows)
+
+    if args.output:
+        write_results_json(args.output, results=rows, summary=summary)
+    else:
+        print(format_results_json(results=rows, summary=summary))
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
