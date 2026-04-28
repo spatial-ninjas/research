@@ -1,0 +1,66 @@
+name: Regression tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install system dependencies for GeoPandas
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Show environment
+        run: |
+          python --version
+          python -m pip freeze
+
+      - name: Check package imports
+        run: |
+          python -c "from research.history_evaluation import evaluate_entry_file, evaluate_history_file; print('history evaluation ok')"
+          python -c "from scripts.evaluate_history import main, parse_args; print('cli ok')"
+
+      - name: Check CLI help
+        run: |
+          python scripts/evaluate_history.py --help
+
+      - name: Run regression tests
+        run: |
+          python -m pytest \
+            tests/test_history_evaluation.py \
+            tests/test_evaluate_history_script.py \
+            tests/test_network_loader.py \
+            tests/test_evaluation.py \
+            tests/test_graph.py \
+            -v

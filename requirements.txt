@@ -1,4 +1,3 @@
 geopandas
 numpy
-routingpy
 python-dotenv
