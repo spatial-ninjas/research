@@ -1,17 +1,28 @@
 # research
 
-Research workspace for evaluating LLM routing behavior on a simplified street-network representation of Southern Helsinki.
+[![Regression Tests](https://github.com/spatial-ninjas/research/actions/workflows/regression-tests.yml/badge.svg)](https://github.com/spatial-ninjas/research/actions/workflows/regression-tests.yml)
+[![PyPI](https://img.shields.io/pypi/v/spatial-ninjas-research?label=spatial-ninjas-research)](https://pypi.org/project/spatial-ninjas-research/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This repository contains the **research and evaluation side** of the project: routing-network inputs, stable SSAL artifacts, exported experiment inputs, reusable evaluation utilities, and analysis scripts. The broader project compares GPT-family and Gemini-family models on routing tasks over an OpenStreetMap-derived Helsinki network, using a shared SSAL-native evaluator with Dijkstra ground truth over the generated graph representation.
+Reusable SSAL, graph, network-loading, and route-evaluation utilities for Spatial Ninjas.
+
+Package version: **0.1.0**  
+Python package: **`spatial-ninjas-research`**  
+Import package: **`research`**
+
+This repository contains the **research and evaluation side** of the LLM spatial-routing project. It provides the shared Python utilities used to convert routing-network data into SSAL, build an SSAL-derived graph, compute Dijkstra ground truth, and evaluate model-generated route responses.
+
+The broader project compares GPT-family and Gemini-family models on route-generation tasks over an OpenStreetMap-derived Southern Helsinki network.
 
 ## Relationship to [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard)
 
 The project is split across two repositories:
 
-- [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard): run prompts, compare OpenAI and Gemini outputs side by side, and store/export history
-- [research](https://github.com/spatial-ninjas/research): prepare routing artifacts, version experiment inputs, and evaluate routing results
+- [llm-compare-dashboard](https://github.com/spatial-ninjas/llm-compare-dashboard): run prompts, compare OpenAI and Gemini outputs, store/export history, and inspect route results visually
+- [research](https://github.com/spatial-ninjas/research): provide reusable SSAL, graph, network-loading, route-evaluation, and offline history-evaluation utilities
 
-The dashboard can use this repository as a local editable Python package during development. This allows the dashboard to import reusable logic from `research` without copying code between repositories.
+For deployment, the dashboard should depend on the published `spatial-ninjas-research` package instead of requiring a sibling checkout of this repository. For local development, the dashboard can still install this repository as an editable package.
 
 ## Project scope
 
@@ -51,11 +62,45 @@ Typical workflow:
 6. Evaluate the results with the reusable helpers and CLI here.
 7. Record summaries and notes for later review.
 
-## Setup
+## Installation
+
+### Install the released package
+
+Install the released package with:
+
+```bash
+python -m pip install spatial-ninjas-research==0.1.0
+```
+
+The PyPI distribution name is `spatial-ninjas-research`, while the Python import path remains `research`:
+
+```python
+from research.ssal import gpkg_to_ssal
+from research.graph import dijkstra_shortest_path
+from research.evaluation import evaluate_route_response
+from research.network_loader import load_network_bundle_from_gpkg
+```
+
+Verify the installed package with:
+
+```bash
+python - <<'PY'
+import research
+from research.ssal import gpkg_to_ssal
+from research.history_evaluation import evaluate_entry_file
+
+print(research.__version__)
+print('research package ok')
+PY
+```
+
+The Python package contains reusable code. Large routing data files, such as GeoPackage inputs, are not distributed through PyPI. For dashboard deployment, the canonical GeoPackage should be provided separately through local configuration or remote object storage.
+
+### Develop this repository locally
 
 Create and activate a virtual environment first.
 
-### macOS / Linux
+macOS / Linux:
 
 ```bash
 python3 -m venv .venv
@@ -64,15 +109,21 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-For runtime-only usage, install:
+Runtime dependencies are declared in `pyproject.toml`. The pinned `requirements.txt` is generated from `pyproject.toml` with `pip-compile` and can be used when a locked dependency set is preferred:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
+Development dependencies are exposed through the `dev` extra and mirrored by `requirements-dev.txt`:
+
+```bash
+python -m pip install -r requirements-dev.txt
+```
+
 ### Local editable install from the dashboard repo
 
-This repository can also be installed as a local editable Python package. This is useful when working with the sibling [`llm-compare-dashboard`](https://github.com/spatial-ninjas/llm-compare-dashboard) repository, so the dashboard can import reusable research utilities without copying code.
+The dashboard can use the published package for deployment, but local editable development is still useful when changing the research utilities and dashboard together.
 
 Expected local folder layout:
 
@@ -89,30 +140,9 @@ source .venv/bin/activate
 pip install -e ../research
 ```
 
-If `llm-compare-dashboard/requirements.txt` includes:
+This editable install should be treated as a development override. Deployment should use the versioned package from PyPI.
 
-```txt
--e ../research
-```
-
-then running the dashboard dependency install is enough:
-
-```bash
-pip install -r requirements.txt
-```
-
-Verify the imports with:
-
-```bash
-python -c "from research.ssal import gpkg_to_ssal; print('ssal ok')"
-python -c "from research.history_evaluation import evaluate_entry_file; print('history evaluation ok')"
-```
-
-The package name is `spatial-ninjas-research`, while the Python import path remains:
-
-```python
-from research.ssal import gpkg_to_ssal
-```
+### Environment configuration
 
 Create a repo-root `.env` file if you want to override the default network inputs:
 
@@ -138,7 +168,7 @@ The CLI entry point for regenerating the versioned SSAL artifact is:
 
 - [scripts/build_ssal.py](scripts/build_ssal.py)
 
-Stable generated SSAL text artifacts are intentionally versioned in this repo.
+Stable generated SSAL text artifacts may be versioned in this repo for reproducible experiments, but large GeoPackage inputs are not part of the Python package.
 
 ### SSAL graph and Dijkstra baseline
 
@@ -213,18 +243,6 @@ This module adapts exported route-history rows into calls to the shared SSAL-nat
 The CLI entry point is intentionally thin:
 
 - [scripts/evaluate_history.py](scripts/evaluate_history.py)
-
-### Evaluation components
-
-The current evaluation workflow is split between reusable helpers and CLI scripts:
-
-- [research/history_evaluation.py](research/history_evaluation.py) adapts dashboard/export history rows into the shared evaluator, preserves metadata, evaluates one-entry or bulk history JSON files, summarizes results, and formats/writes JSON output
-- [research/evaluation.py](research/evaluation.py) contains the shared route-response evaluator, including JSON recovery, path extraction, path validation, Dijkstra ground truth, and route metrics
-- [research/network_loader.py](research/network_loader.py) loads the GeoPackage network, generates SSAL text, computes the SSAL hash, and builds the graph used for evaluation
-- [research/graph.py](research/graph.py) contains the SSAL graph model and deterministic Dijkstra baseline
-- [scripts/build_ssal.py](scripts/build_ssal.py) builds the compact SSAL text artifact from the GeoPackage road-network input
-- [scripts/evaluate_history.py](scripts/evaluate_history.py) is the thin CLI wrapper around `research.history_evaluation`
-- [scripts/README.md](scripts/README.md) documents script dependencies, configuration, and usage
 
 ### LLM routing prototype
 
