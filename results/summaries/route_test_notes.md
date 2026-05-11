@@ -542,5 +542,90 @@ GPT 5.4 remains more robust regarding output structure across all variants but c
 In conclusion, the Validation Routing Engine prompt is currently the most effective for production, as it successfully forces the models to treat the SSAL data as a mathematical graph rather than a creative writing task. Gemini is the preferred engine for complex navigation, while GPT serves better for simple, high-speed formatting tasks.
 
 
+VoT Test Results  (update 11-05-2026)
+
+Test 50
+Find path between Origin Node: 900136737 to Destination Node: 7669535781. 
+
+Results:
+
+Gemini 2.5 Flash: ⚠️ Needs review. Accuracy: 5.0%, Precision: 0.0%
+
+GPT 5.4: ⚠️ Needs review. Accuracy: 45.0%, Precision: 41.0% (Score: 0.885)
+
+Test 51
+Find path between Origin Node: 310062431 to Destination Node: 314935876. 
+
+Results:
+
+Gemini 2.5 Flash: ⚠️ Needs review. Failed to deliver correct format in response (invalid_json).
+
+GPT 5.4: ⚠️ Needs review. Accuracy: 40.7%, Precision: 38.8% (Score: 0.653)
+
+Test 52
+Find path between Origin Node: 8844430770 to Destination Node: 310062431.
+
+Results:
+
+Gemini 2.5 Flash: ⚠️ Needs review. Accuracy: 70.8%, Precision: 65.2% (Score: 0.106)
+
+GPT 5.4 Mini: ⚠️ Needs review. Accuracy: 8.3%, Precision: 0.0%
+
+
+
+VoT Prompt Template:
+
+"""
+You are a precise navigation engine equipped with "Mind's Eye" spatial reasoning capabilities. Your task is to calculate the shortest path between two nodes using the provided SSAL (Simplified Semantic Adjacency List) network data.
+
+Input data:
+The SSAL network data is included below. It contains the network topology where each node lists its outgoing connections in this format:
+
+Node_ID:
+  Neighbor_ID {{length, street_name, direction_flag, from_x=..., from_y=..., to_x=..., to_y=...}}
+
+Fields:
+- length: edge length / traversal cost. Minimize the sum of these values.
+- street_name: display/debug name for the edge.
+- direction_flag: "1w" means one-way; "2w" means two-way in the source road data.
+- from_x/from_y and to_x/to_y: endpoint coordinates for spatial context only.
+
+Task:
+Find the optimal route from Origin Node ID: {origin} to Destination Node ID: {destination}.
+
+Visualization-of-Thought (VoT) Instructions:
+1. Before committing to a path, mentally visualize the spatial corridor between {origin} and {destination}.
+2. Identify potential "1w" (one-way) bottlenecks or junction-heavy areas (e.g., Viiskulma) that require careful navigation.
+3. Use the provided coordinates to maintain geographical orientation, but only traverse valid graph edges.
+
+Constraints:
+- Only use connections explicitly listed in the SSAL data.
+- Respect directed edges exactly as listed.
+- Even if an edge is marked "2w", only use the direction that is explicitly listed under the current node.
+- Minimize the total length.
+- Use coordinates only as supporting spatial context; do not invent edges from coordinate proximity.
+- Output the result strictly as a JSON object.
+- Do not include any conversational text, explanation, Markdown, or code fences.
+
+Output format:
+{{
+  "thought_process_visualization": "A brief internal sketch of the identified route corridor and potential one-way constraints to avoid.",
+  "origin": "{origin}",
+  "destination": "{destination}",
+  "total_length": 123.4,
+  "route": [
+    {{"node": "{origin}", "edge_name": "start"}},
+    {{"node": "...", "edge_name": "[STREET NAME]"}},
+    {{"node": "{destination}", "edge_name": "[STREET NAME]"}}
+  ],
+  "status": "success"
+}}
+
+SSAL:
+{ssal_text}
+
+"""
+
+
 
 
