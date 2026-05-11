@@ -1,0 +1,74 @@
+Visualization-of-Thought (VoT)
+
+The Visualization-of-Thought (VoT) prompting strategy is an advanced cognitive enhancement framework designed to elicit a "Mind's Eye" in Large Language Models (LLMs). While standard Chain-of-Thought (CoT) prompting focuses on sequential logical reasoning, VoT requires the model to create internal spatial representations—mental sketches—before arriving at a final output. This is particularly critical in spatial reasoning, where models often struggle to manage complex topological relationships through text alone. 
+Relevance to GIS Development and Routing
+Our experimental analysis identified significant "failure modes" in LLM routing, particularly in complex urban environments like the Viiskulma junction. The primary issue is the autoregressive nature of LLMs: once a node is committed to the output sequence, the model cannot "backtrack" if it hits a one-way constraint or a dead-end. 
+
+VoT addresses this by introducing a two-stage reasoning process:
+1. Spatial Encoding: The model is prompted to mentally map the "spatial corridor" between the origin and destination using the provided Structured Spatial Adjacency List (SSAL). 
+2. Topological Validation: By visualizing the route first, the model can identify and avoid "1w" (one-way) traps and junction-heavy segments before generating the final node sequence. 
+This strategy aims to reduce "topological hallucinations" and improve the precision of distance estimation and node sequence accuracy, especially in high-density networks. 
+
+Scientific Literature References
+Wang, Y., et al. (2026). LLM-GeoTextCog: A Cognitive Enhancement Framework for Geospatial Scene Understanding in Geographic Texts Using Large Language Models. Transactions in GIS. 
+Wu, S., et al. (2024). Mind’s Eye of LLMs: Visualization-of-Thought Elicits Spatial Reasoning in Large Language Models. NeurIPS. 
+Xu, H., et al. (2025). Evaluating Large Language Models on Geospatial Tasks: A Multiple Geospatial Task Benchmarking Study. International Journal of Digital Earth. 
+
+VoT Experimental Prompt Example
+
+
+"""
+
+You are a precise navigation engine equipped with "Mind's Eye" spatial reasoning capabilities. Your task is to calculate the shortest path between two nodes using the provided SSAL (Simplified Semantic Adjacency List) network data.
+
+Input data:
+The SSAL network data is included below. It contains the network topology where each node lists its outgoing connections in this format:
+
+Node_ID:
+  Neighbor_ID {{length, street_name, direction_flag, from_x=..., from_y=..., to_x=..., to_y=...}}
+
+Fields:
+- length: edge length / traversal cost. Minimize the sum of these values.
+- street_name: display/debug name for the edge.
+- direction_flag: "1w" means one-way; "2w" means two-way in the source road data.
+- from_x/from_y and to_x/to_y: endpoint coordinates for spatial context only.
+
+Task:
+Find the optimal route from Origin Node ID: {origin} to Destination Node ID: {destination}.
+
+Visualization-of-Thought (VoT) Instructions:
+1. Before committing to a path, mentally visualize the spatial corridor between {origin} and {destination}.
+2. Identify potential "1w" (one-way) bottlenecks or junction-heavy areas (e.g., Viiskulma) that require careful navigation.
+3. Use the provided coordinates to maintain geographical orientation, but only traverse valid graph edges.
+
+Constraints:
+- Only use connections explicitly listed in the SSAL data.
+- Respect directed edges exactly as listed.
+- Even if an edge is marked "2w", only use the direction that is explicitly listed under the current node.
+- Minimize the total length.
+- Use coordinates only as supporting spatial context; do not invent edges from coordinate proximity.
+- Output the result strictly as a JSON object.
+- Do not include any conversational text, explanation, Markdown, or code fences.
+
+Output format:
+{{
+  "thought_process_visualization": "A brief internal sketch of the identified route corridor and potential one-way constraints to avoid.",
+  "origin": "{origin}",
+  "destination": "{destination}",
+  "total_length": 123.4,
+  "route": [
+    {{"node": "{origin}", "edge_name": "start"}},
+    {{"node": "...", "edge_name": "[STREET NAME]"}},
+    {{"node": "{destination}", "edge_name": "[STREET NAME]"}}
+  ],
+  "status": "success"
+}}
+
+SSAL:
+{ssal_text}
+
+"""
+SSAL:
+{ssal_text}
+
+"""
