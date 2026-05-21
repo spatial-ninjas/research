@@ -62,6 +62,23 @@ Typical workflow:
 6. Evaluate the results with the reusable helpers and CLI here.
 7. Record summaries and notes for later review.
 
+## Route evaluation data
+
+Cleaned route-evaluation data and grouped summaries are available under:
+
+- [`data/route-evaluation/`](data/route-evaluation/)
+
+This folder contains the selected route cases used in the final LLM route-finding analysis. The public-facing data is derived from dashboard route-evaluation history, but it is not a full database export. Obsolete experiments, unrelated test runs, provider-specific raw API responses, full model responses, large route arrays, SSAL hashes, and other internal metadata are intentionally omitted.
+
+The folder contains:
+
+- `README.md` — notes for the cleaned route-evaluation dataset
+- `relevant_route_history_cleaned.json` — cleaned per-run evaluation data for the selected route cases
+- `route_case_config_evaluation_summary.csv` — tabular summary grouped by route case, provider/model configuration, prompt template, and SSAL profile
+- `route_case_config_evaluation_summary.md` — human-readable version of the grouped summary for GitHub browsing
+
+The `indices_base0_ranges` field in the summaries uses base-0 indexing and refers to positions in `relevant_route_history_cleaned.json`.
+
 ## Installation
 
 ### Install the released package
@@ -244,13 +261,13 @@ The CLI entry point is intentionally thin:
 
 - [scripts/evaluate_history.py](scripts/evaluate_history.py)
 
-### LLM routing prototype
+### Archived notes and earlier experiments
 
-An earlier prototype script feeds SSAL data and a routing prompt to an LLM and expects a route in JSON format. It is kept for historical reference and is not treated as the main current workflow.
+Earlier exploratory notes, route-test notes, and enhancement-strategy examples are kept under:
 
-Current location:
+- [archive/](archive/)
 
-- [archive/prototypes/](archive/prototypes/)
+These files are historical references and are not treated as the main current workflow.
 
 ### Comparison interface and history
 
@@ -258,14 +275,13 @@ The project also uses a comparison interface in the separate dashboard repo for 
 
 ## Repository layout
 
-- `data/raw/routing_networks/` — OSM-derived GeoPackage inputs
-- `data/derived/ssal/` — stable generated SSAL text artifacts
-- `data/raw/llm_history_exports/` — exported dashboard history JSONs
 - `research/` — reusable Python logic for SSAL conversion, graph utilities, network loading, route evaluation, and history-evaluation adapters
-- `scripts/` — executable SSAL generation and evaluation scripts
-- `results/summaries/` — experiment notes and summaries
-- `archive/prototypes/` — older prototype scripts
+- `scripts/` — executable SSAL generation, SSAL equivalence checking, and history-evaluation scripts
 - `tests/` — regression tests for graph, evaluation, network loading, history helpers, and CLI wiring
+- `data/raw/routing_networks/` — OSM-derived GeoPackage inputs used as routing-network sources
+- `data/derived/ssal/` — stable generated SSAL text artifacts
+- `data/route-evaluation/` — cleaned public route-evaluation data and grouped summaries
+- `archive/` — older route-evaluation notes, route-test notes, and enhancement-strategy examples
 
 ## Common commands
 
@@ -279,22 +295,23 @@ Evaluate a dashboard history export:
 
 ```bash
 python scripts/evaluate_history.py \
-  --history-json data/raw/llm_history_exports/llm_compare_history_2026-04-20.json \
-  --output results/summaries/history_evaluation.json
+  --history-json path/to/dashboard_history_export.json \
+  --output build/history_evaluation.json
 ```
 
 Evaluate one exported history row:
 
 ```bash
 python scripts/evaluate_history.py \
-  --entry-json data/raw/llm_history_exports/entry_example.json \
-  --output results/summaries/entry_evaluation.json
+  --entry-json path/to/entry_example.json \
+  --output build/entry_evaluation.json
 ```
 
 Show script options:
 
 ```bash
 python scripts/build_ssal.py --help
+python scripts/check_ssal_equivalence.py --help
 python scripts/evaluate_history.py --help
 ```
 
@@ -369,22 +386,14 @@ Early experiment notes indicate:
 
 The current evaluator is stricter than the early exploratory evaluator. It validates node paths against the SSAL-derived graph, recomputes candidate route length from graph edges, and compares the candidate route against Dijkstra ground truth.
 
-Detailed chronology and test-by-test notes are kept in the supporting docs, summaries, and changelog rather than in the README.
+Detailed chronology and test-by-test notes are kept in `archive/`, `data/route-evaluation/`, and the changelog rather than in the README.
 
 ## Evaluation note
 
 The current route evaluator is SSAL-native. It validates LLM-produced node paths against the SSAL-derived graph, recomputes candidate route length from graph edges, and compares the candidate route against Dijkstra ground truth.
 
-The default offline evaluator no longer requires:
-
-```text
-ORS_API_KEY
-routingpy
-OpenRouteService
-```
-
 ## See also
 
 - [CHANGELOG.md](CHANGELOG.md)
 - [scripts/README.md](scripts/README.md)
-- [results/summaries/](results/summaries/)
+- [data/route-evaluation/README.md](data/route-evaluation/README.md)

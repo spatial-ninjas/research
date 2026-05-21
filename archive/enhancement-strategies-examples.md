@@ -1,24 +1,27 @@
-Visualization-of-Thought (VoT)
+# Visualization-of-Thought (VoT)
 
-The Visualization-of-Thought (VoT) prompting strategy is an advanced cognitive enhancement framework designed to elicit a "Mind's Eye" in Large Language Models (LLMs). While standard Chain-of-Thought (CoT) prompting focuses on sequential logical reasoning, VoT requires the model to create internal spatial representations—mental sketches—before arriving at a final output. This is particularly critical in spatial reasoning, where models often struggle to manage complex topological relationships through text alone. 
-Relevance to GIS Development and Routing
-Our experimental analysis identified significant "failure modes" in LLM routing, particularly in complex urban environments like the Viiskulma junction. The primary issue is the autoregressive nature of LLMs: once a node is committed to the output sequence, the model cannot "backtrack" if it hits a one-way constraint or a dead-end. 
+The Visualization-of-Thought (VoT) prompting strategy is an advanced cognitive enhancement framework designed to elicit a "Mind's Eye" in Large Language Models (LLMs). While standard Chain-of-Thought (CoT) prompting focuses on sequential logical reasoning, VoT requires the model to create internal spatial representations—mental sketches—before arriving at a final output. This is particularly critical in spatial reasoning, where models often struggle to manage complex topological relationships through text alone.
+
+## Relevance to GIS Development and Routing
+
+Our experimental analysis identified significant "failure modes" in LLM routing, particularly in complex urban environments like the Viiskulma junction. The primary issue is the autoregressive nature of LLMs: once a node is committed to the output sequence, the model cannot "backtrack" if it hits a one-way constraint or a dead-end.
 
 VoT addresses this by introducing a two-stage reasoning process:
-1. Spatial Encoding: The model is prompted to mentally map the "spatial corridor" between the origin and destination using the provided Structured Spatial Adjacency List (SSAL). 
-2. Topological Validation: By visualizing the route first, the model can identify and avoid "1w" (one-way) traps and junction-heavy segments before generating the final node sequence. 
-This strategy aims to reduce "topological hallucinations" and improve the precision of distance estimation and node sequence accuracy, especially in high-density networks. 
 
-Scientific Literature References
-Wang, Y., et al. (2026). LLM-GeoTextCog: A Cognitive Enhancement Framework for Geospatial Scene Understanding in Geographic Texts Using Large Language Models. Transactions in GIS. 
-Wu, S., et al. (2024). Mind’s Eye of LLMs: Visualization-of-Thought Elicits Spatial Reasoning in Large Language Models. NeurIPS. 
-Xu, H., et al. (2025). Evaluating Large Language Models on Geospatial Tasks: A Multiple Geospatial Task Benchmarking Study. International Journal of Digital Earth. 
+1. Spatial Encoding: The model is prompted to mentally map the "spatial corridor" between the origin and destination using the provided Structured Spatial Adjacency List (SSAL).
+2. Topological Validation: By visualizing the route first, the model can identify and avoid "1w" (one-way) traps and junction-heavy segments before generating the final node sequence.
 
-VoT Experimental Prompt Example
+This strategy aims to reduce "topological hallucinations" and improve the precision of distance estimation and node sequence accuracy, especially in high-density networks.
 
+## Scientific Literature References
 
-"""
+- Wang, Y., et al. (2026). LLM-GeoTextCog: A Cognitive Enhancement Framework for Geospatial Scene Understanding in Geographic Texts Using Large Language Models. Transactions in GIS.
+- Wu, S., et al. (2024). Mind’s Eye of LLMs: Visualization-of-Thought Elicits Spatial Reasoning in Large Language Models. NeurIPS.
+- Xu, H., et al. (2025). Evaluating Large Language Models on Geospatial Tasks: A Multiple Geospatial Task Benchmarking Study. International Journal of Digital Earth.
 
+## VoT Experimental Prompt Example
+
+```
 You are a precise navigation engine equipped with "Mind's Eye" spatial reasoning capabilities. Your task is to calculate the shortest path between two nodes using the provided SSAL (Simplified Semantic Adjacency List) network data.
 
 Input data:
@@ -70,5 +73,4 @@ SSAL:
 """
 SSAL:
 {ssal_text}
-
-"""
+```
